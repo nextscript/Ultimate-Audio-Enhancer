@@ -258,17 +258,12 @@ Changes are applied while the media is playing, so adjustments are audible immed
     </tr>
   </thead>
   <tbody>
-    <tr><td>HTML5 audio/video detection</td><td align="center">Supported*</td><td align="center">Supported*</td><td align="center">Supported*</td><td align="center">Supported*</td></tr>
-    <tr><td>Web Audio processing</td><td align="center">Supported*</td><td align="center">Supported*</td><td align="center">Supported*</td><td align="center">Supported*</td></tr>
-    <tr><td>Equalizer / DFX / Filters</td><td align="center">Supported*</td><td align="center">Supported*</td><td align="center">Supported*</td><td align="center">Supported*</td></tr>
+    <tr><td>HTML5 audio/video detection</td><td align="center">✅</td><td align="center">✅</td><td align="center">✅</td><td align="center">✅</td></tr>
+    <tr><td>Web Audio processing</td><td align="center">✅</td><td align="center">✅</td><td align="center">✅</td><td align="center">✅</td></tr>
+    <tr><td>Equalizer / DFX / Filters</td><td align="center">✅</td><td align="center">✅</td><td align="center">✅</td><td align="center">✅</td></tr>
     <tr><td>Keyboard shortcuts</td><td align="center">✅</td><td align="center">✅</td><td align="center">✅</td><td align="center">✅</td></tr>
   </tbody>
 </table>
-
-<p>
-<b>*Compatibility depends on how the website delivers its media.</b><br>
-Cross-origin restrictions, protected streams, DRM, browser security policies, or unsupported media implementations may prevent a media element from being routed through the Web Audio API.
-</p>
 
 <hr>
 <h2>Important — Chrome / Edge</h2>
