@@ -3,14 +3,14 @@
 <hr>
 
 <b>Ultimate Audio Enhancer improves HTML5 audio and video in real time.</b><br>
-Boost bass and treble, tune a 10-band equalizer, apply AutoEq headphone profiles, widen the stereo image, enhance clarity and dynamics, and protect the output with a configurable limiter.
+Boost bass and treble, tune a 10-band equalizer, apply AutoEq headphone profiles, enhance stereo width, improve clarity and dynamics, and protect the output with a configurable limiter.
 
-<br><br>
+<br>
 
 <b>No external audio software. No virtual audio cable. Just install the userscript and use the built-in controls.</b>
 
 <hr>
-<h2>Why you need this</h2>
+<h2>Why You Need This</h2>
 <hr>
 
 <ul>
@@ -21,9 +21,27 @@ Boost bass and treble, tune a 10-band equalizer, apply AutoEq headphone profiles
 <li>Enhance clarity, ambience, stereo width, dynamics, and low-end impact</li>
 <li>Control high-pass and low-pass filtering</li>
 <li>Increase playback volume beyond the normal 100% level</li>
-<li>Protect high-output configurations with a configurable limiter</li>
+<li>Protect boosted output with a configurable limiter</li>
 <li>Keep one persistent audio setup across supported websites</li>
 </ul>
+
+<hr>
+<h2>Screenshots</h2>
+<hr>
+
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img src="Sceenshots/screen1.PNG" width="75%">
+    </td>
+    <td width="50%" align="center">
+      <img src="Sceenshots/screen2.PNG" width="60%">
+      <img src="Sceenshots/screen3.PNG" width="60%">
+      <img src="Sceenshots/screen4.PNG" width="60%">
+      <img src="Sceenshots/screen5.PNG" width="60%">
+    </td>
+  </tr>
+</table>
 
 <hr>
 <h2>Key Features</h2>
@@ -32,11 +50,11 @@ Boost bass and treble, tune a 10-band equalizer, apply AutoEq headphone profiles
 <ul>
 <li><b>Real-time Web Audio processing</b> for HTML5 video and audio elements</li>
 <li><b>Volume Boost</b> from 25% to 300%</li>
-<li><b>Bass Boost</b> with real low-shelf processing</li>
-<li><b>Treble Boost</b> with real high-shelf processing</li>
+<li><b>Bass Boost</b> with low-shelf processing</li>
+<li><b>Treble Boost</b> with high-shelf processing</li>
 <li><b>10-band Equalizer</b> from 31 Hz to 16 kHz</li>
 <li><b>AutoEq support</b> with searchable headphone presets</li>
-<li><b>DFX enhancement section</b> with five independent effects</li>
+<li><b>DFX enhancement</b> with five independent effects</li>
 <li><b>High-Pass Filter</b> from 20–500 Hz</li>
 <li><b>Low-Pass Filter</b> from 1–20 kHz</li>
 <li><b>Configurable Limiter</b> with threshold, attack, release, ceiling, and lookahead</li>
@@ -60,13 +78,11 @@ The DFX section adds five real-time enhancement controls:
 <li><b>HyperBass</b> → reinforces deep bass and low-frequency punch</li>
 </ul>
 
-<p>Each DFX control ranges from <b>0 to 10</b> and is applied to the audio output in real time.</p>
+<p>
+Each DFX control ranges from <b>0 to 10</b> and is applied to the audio output in real time.
+</p>
 
-<hr>
-<h2>DFX Presets</h2>
-<hr>
-
-Ready-to-use presets are included:
+<h3>DFX Presets</h3>
 
 <ul>
 <li><b>Balanced</b> → moderate enhancement for general use</li>
@@ -79,14 +95,12 @@ Ready-to-use presets are included:
 <li><b>Night</b> → restrained enhancement for lower-volume listening</li>
 <li><b>Power</b> → aggressive dynamics, bass, and stereo enhancement</li>
 <li><b>Natural</b> → light processing with a more neutral presentation</li>
-<li><b>Custom</b> → automatically selected when you edit DFX values manually</li>
+<li><b>Custom</b> → automatically selected when DFX values are changed manually</li>
 </ul>
 
 <hr>
 <h2>10-Band Equalizer</h2>
 <hr>
-
-The built-in graphic equalizer provides independent control over:
 
 <p align="center">
 <b>31 Hz · 62 Hz · 125 Hz · 250 Hz · 500 Hz · 1 kHz · 2 kHz · 4 kHz · 8 kHz · 16 kHz</b>
@@ -190,8 +204,6 @@ The built-in limiter helps control excessive output levels when using high boost
 <h2>Import / Export</h2>
 <hr>
 
-Your complete configuration can be saved as a JSON file.
-
 <ul>
 <li>Export current audio settings</li>
 <li>Export overlay position and UI state</li>
@@ -218,7 +230,7 @@ Default export filename: <code>ultimate-audio-enhancer-config.json</code>
 </ul>
 
 <hr>
-<h2>How it works</h2>
+<h2>How It Works</h2>
 <hr>
 
 Ultimate Audio Enhancer uses the browser's <b>Web Audio API</b> and routes supported HTML5 media through a real-time processing chain.
@@ -228,7 +240,7 @@ The processing chain includes volume control, filtering, equalization, DFX proce
 </p>
 
 <p>
-Changes are applied while the media is playing, so you can hear adjustments immediately.
+Changes are applied while the media is playing, so adjustments are audible immediately.
 </p>
 
 <hr>
@@ -246,15 +258,16 @@ Changes are applied while the media is playing, so you can hear adjustments imme
     </tr>
   </thead>
   <tbody>
-    <tr><td>HTML5 audio/video detection</td><td align="center">✅</td><td align="center">✅</td><td align="center">✅</td><td align="center">✅</td></tr>
-    <tr><td>Web Audio processing</td><td align="center">✅</td><td align="center">✅</td><td align="center">✅</td><td align="center">✅</td></tr>
-    <tr><td>Equalizer / DFX / Filters</td><td align="center">✅</td><td align="center">✅</td><td align="center">✅</td><td align="center">✅</td></tr>
+    <tr><td>HTML5 audio/video detection</td><td align="center">Supported*</td><td align="center">Supported*</td><td align="center">Supported*</td><td align="center">Supported*</td></tr>
+    <tr><td>Web Audio processing</td><td align="center">Supported*</td><td align="center">Supported*</td><td align="center">Supported*</td><td align="center">Supported*</td></tr>
+    <tr><td>Equalizer / DFX / Filters</td><td align="center">Supported*</td><td align="center">Supported*</td><td align="center">Supported*</td><td align="center">Supported*</td></tr>
     <tr><td>Keyboard shortcuts</td><td align="center">✅</td><td align="center">✅</td><td align="center">✅</td><td align="center">✅</td></tr>
   </tbody>
 </table>
 
 <p>
-Compatibility can depend on how a website delivers its media. Browser security restrictions, cross-origin media, protected streams, or DRM may prevent a media element from being routed through the Web Audio API.
+<b>*Compatibility depends on how the website delivers its media.</b><br>
+Cross-origin restrictions, protected streams, DRM, browser security policies, or unsupported media implementations may prevent a media element from being routed through the Web Audio API.
 </p>
 
 <hr>
@@ -288,3 +301,11 @@ If userscripts do not run correctly, make sure userscript execution is enabled f
 <li>Settings storage: <b>GM_getValue / GM_setValue</b> with localStorage fallback</li>
 <li>AutoEq download: <b>GM_xmlhttpRequest</b> with Fetch API fallback</li>
 </ul>
+
+<hr>
+<h2>About</h2>
+<hr>
+
+<p>
+<b>Ultimate Audio Enhancer</b> is a browser userscript for real-time HTML5 media audio enhancement with AutoEq, a 10-band equalizer, DFX processing, bass and treble boost, filters, volume boost, and a configurable limiter.
+</p>
