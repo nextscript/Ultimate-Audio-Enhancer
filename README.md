@@ -1,3 +1,7 @@
+<img src="https://raw.githubusercontent.com/nextscript/Ultimate-Audio-Enhancer/refs/heads/main/UI.png">
+
+<a href="https://greasyfork.org/en/scripts/595277-ultimate-audio-enhancer?locale_override=1" target="_blank">Ultimate Audio Enhancer</a>
+
 <hr>
 <h2>Make Every Video & Song Sound Better — Instantly</h2>
 <hr>
