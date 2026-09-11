@@ -331,7 +331,7 @@ If userscripts do not run correctly, make sure userscript execution is enabled f
 <hr>
 
 <ul>
-<li>Userscript version: <b>1.0.1</b></li>
+<li>Userscript version: <b>1.0.3</b></li>
 <li>Audio engine: <b>Web Audio API / AudioContext</b></li>
 <li>Equalizer: <b>10 × BiquadFilterNode</b></li>
 <li>Effects: <b>DelayNode, ConvolverNode, WaveShaperNode, BiquadFilterNode, ChannelSplitterNode, ChannelMergerNode, and DynamicsCompressorNode</b></li>
