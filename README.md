@@ -7,7 +7,7 @@
 <hr>
 
 <b>Ultimate Audio Enhancer improves HTML5 audio and video in real time.</b><br>
-Boost bass and treble, tune a 10-band equalizer, apply AutoEq headphone profiles, enhance stereo width, improve clarity and dynamics, and protect the output with a configurable limiter.
+Boost bass and treble, tune a 10-band equalizer, apply AutoEq headphone profiles, add real-time effects, enhance stereo width, improve clarity and dynamics, and protect the output with a configurable limiter.
 
 <br>
 
@@ -22,6 +22,7 @@ Boost bass and treble, tune a 10-band equalizer, apply AutoEq headphone profiles
 <li>Add stronger bass and clearer treble</li>
 <li>Use a full 10-band graphic equalizer</li>
 <li>Apply AutoEq headphone correction profiles</li>
+<li>Add real-time effects such as echo, reverb, chorus, flanger, phaser, tremolo, vibrato, distortion, stereo delay, and convolution reverb</li>
 <li>Enhance clarity, ambience, stereo width, dynamics, and low-end impact</li>
 <li>Control high-pass and low-pass filtering</li>
 <li>Increase playback volume beyond the normal 100% level</li>
@@ -59,6 +60,9 @@ Boost bass and treble, tune a 10-band equalizer, apply AutoEq headphone profiles
 <li><b>10-band Equalizer</b> from 31 Hz to 16 kHz</li>
 <li><b>AutoEq support</b> with searchable headphone presets</li>
 <li><b>DFX enhancement</b> with five independent effects</li>
+<li><b>Effects section</b> with real-time delay, reverb, modulation, distortion, compressor, and convolution effects</li>
+<li><b>Effect Presets</b> with built-in presets and user presets</li>
+<li><b>Drag-and-drop effect order</b> for changing the processing chain</li>
 <li><b>High-Pass Filter</b> from 20–500 Hz</li>
 <li><b>Low-Pass Filter</b> from 1–20 kHz</li>
 <li><b>Configurable Limiter</b> with threshold, attack, release, ceiling, and lookahead</li>
@@ -100,6 +104,41 @@ Each DFX control ranges from <b>0 to 10</b> and is applied to the audio output i
 <li><b>Power</b> → aggressive dynamics, bass, and stereo enhancement</li>
 <li><b>Natural</b> → light processing with a more neutral presentation</li>
 <li><b>Custom</b> → automatically selected when DFX values are changed manually</li>
+</ul>
+
+<hr>
+<h2>Effects</h2>
+<hr>
+
+The Effects section adds an additional real-time effect chain to the audio pipeline.
+
+<ul>
+<li><b>Echo / Delay</b></li>
+<li><b>Reverb / Hall</b></li>
+<li><b>Pitch Shift</b></li>
+<li><b>Chorus</b></li>
+<li><b>Flanger</b></li>
+<li><b>Phaser</b></li>
+<li><b>Tremolo</b></li>
+<li><b>Vibrato</b></li>
+<li><b>Distortion / Overdrive</b></li>
+<li><b>Compressor</b></li>
+<li><b>Stereo Delay</b></li>
+<li><b>Convolution Reverb</b></li>
+</ul>
+
+<p>
+Each effect has its own on/off switch, configuration panel, and reset button. Multiple effects can run at the same time.
+</p>
+
+<h3>Effect Presets</h3>
+
+<ul>
+<li>Built-in presets such as Small Room, Large Hall, Cathedral, Slapback Echo, Deep Echo, Wide Chorus, Dreamy, Telephone, Radio, Megaphone, Lo-Fi, Vocal Wide, and Concert</li>
+<li>Save, rename, delete, export, and import custom effect presets</li>
+<li>Drag effects to change the processing order</li>
+<li>Effect settings, order, selected preset, user presets, and modal position are saved automatically</li>
+<li>Presets that temporarily change global settings, such as EQ or filters, restore the previous values when Reset All Effects or Custom is selected</li>
 </ul>
 
 <hr>
@@ -195,6 +234,7 @@ The built-in limiter helps control excessive output levels when using high boost
     <tr><td><b>CTRL + SHIFT + E</b></td><td>Open Equalizer</td></tr>
     <tr><td><b>CTRL + SHIFT + Q</b></td><td>Open AutoEq Presets</td></tr>
     <tr><td><b>CTRL + SHIFT + F</b></td><td>Open High-Pass / Low-Pass Filter settings</td></tr>
+    <tr><td><b>CTRL + SHIFT + S</b></td><td>Open Effects</td></tr>
     <tr><td><b>CTRL + SHIFT + B</b></td><td>Toggle Bass Boost</td></tr>
     <tr><td><b>CTRL + SHIFT + T</b></td><td>Toggle Treble Boost</td></tr>
     <tr><td><b>CTRL + SHIFT + L</b></td><td>Toggle High-Pass Filter</td></tr>
@@ -212,6 +252,7 @@ The built-in limiter helps control excessive output levels when using high boost
 <li>Export current audio settings</li>
 <li>Export overlay position and UI state</li>
 <li>Import a previously saved configuration</li>
+<li>Export and import individual effect presets</li>
 <li>Imported values are validated before being applied</li>
 </ul>
 
@@ -229,7 +270,7 @@ Default export filename: <code>ultimate-audio-enhancer-config.json</code>
 <li>Open a website containing HTML5 video or audio</li>
 <li>Start playback</li>
 <li>Press <b>CTRL + SHIFT + A</b></li>
-<li>Adjust Bass, Treble, Equalizer, DFX, AutoEq, Filters, or Limiter</li>
+<li>Adjust Bass, Treble, Equalizer, DFX, AutoEq, Effects, Filters, or Limiter</li>
 <li>Done ✅</li>
 </ul>
 
@@ -240,7 +281,7 @@ Default export filename: <code>ultimate-audio-enhancer-config.json</code>
 Ultimate Audio Enhancer uses the browser's <b>Web Audio API</b> and routes supported HTML5 media through a real-time processing chain.
 
 <p>
-The processing chain includes volume control, filtering, equalization, DFX processing, stereo Mid/Side enhancement, dynamic processing, limiting, and final output analysis.
+The processing chain includes volume control, filtering, equalization, DFX processing, stereo Mid/Side enhancement, the Effects chain, dynamic processing, limiting, and final output analysis.
 </p>
 
 <p>
@@ -264,7 +305,7 @@ Changes are applied while the media is playing, so adjustments are audible immed
   <tbody>
     <tr><td>HTML5 audio/video detection</td><td align="center">✅</td><td align="center">✅</td><td align="center">✅</td><td align="center">✅</td></tr>
     <tr><td>Web Audio processing</td><td align="center">✅</td><td align="center">✅</td><td align="center">✅</td><td align="center">✅</td></tr>
-    <tr><td>Equalizer / DFX / Filters</td><td align="center">✅</td><td align="center">✅</td><td align="center">✅</td><td align="center">✅</td></tr>
+    <tr><td>Equalizer / DFX / Effects / Filters</td><td align="center">✅</td><td align="center">✅</td><td align="center">✅</td><td align="center">✅</td></tr>
     <tr><td>Keyboard shortcuts</td><td align="center">✅</td><td align="center">✅</td><td align="center">✅</td><td align="center">✅</td></tr>
   </tbody>
 </table>
@@ -290,9 +331,10 @@ If userscripts do not run correctly, make sure userscript execution is enabled f
 <hr>
 
 <ul>
-<li>Userscript version: <b>1.0.0</b></li>
+<li>Userscript version: <b>1.0.1</b></li>
 <li>Audio engine: <b>Web Audio API / AudioContext</b></li>
 <li>Equalizer: <b>10 × BiquadFilterNode</b></li>
+<li>Effects: <b>DelayNode, ConvolverNode, WaveShaperNode, BiquadFilterNode, ChannelSplitterNode, ChannelMergerNode, and DynamicsCompressorNode</b></li>
 <li>Stereo enhancement: <b>Mid/Side processing</b></li>
 <li>Dynamic processing: <b>DynamicsCompressorNode</b></li>
 <li>Limiter: <b>Dynamics compressor + lookahead delay + output ceiling</b></li>
@@ -301,10 +343,3 @@ If userscripts do not run correctly, make sure userscript execution is enabled f
 <li>AutoEq download: <b>GM_xmlhttpRequest</b> with Fetch API fallback</li>
 </ul>
 
-<hr>
-<h2>About</h2>
-<hr>
-
-<p>
-<b>Ultimate Audio Enhancer</b> is a browser userscript for real-time HTML5 media audio enhancement with AutoEq, a 10-band equalizer, DFX processing, bass and treble boost, filters, volume boost, and a configurable limiter.
-</p>
