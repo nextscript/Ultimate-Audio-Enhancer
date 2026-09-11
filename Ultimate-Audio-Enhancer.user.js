@@ -3,7 +3,7 @@
 // @name:de      Ultimate Audio Enhancer (Echtzeit-Audio-Verbesserung)
 // @namespace    https://github.com/nextscript
 // @author       Freak288
-// @version      1.0.0
+// @version      1.0.1
 // @description  Real-time audio enhancement for HTML5 video and audio
 // @description:de Echtzeit-Audio-Verbesserung für HTML5-Video und Audio
 // @match        *://*/*
@@ -25,7 +25,7 @@
   // ============================================================================
   // 1. Configuration
   // ============================================================================
-  const VERSION = '1.0.0';
+  const VERSION = '1.0.1';
   const AUTOEQ_BASE = 'https://raw.githubusercontent.com/nextscript/AutoEq/master/results/';
   const AUTOEQ_INDEX_URL = AUTOEQ_BASE + 'INDEX.md';
   const EXPORT_FILENAME = 'ultimate-audio-enhancer-config.json';
@@ -55,6 +55,131 @@
   };
 
   const AUTOEQ_TYPE_MAP = { PK: 'peaking', LSC: 'lowshelf', HSC: 'highshelf' };
+
+  const EFFECT_ORDER = [
+    'pitch', 'chorus', 'flanger', 'phaser', 'tremolo', 'vibrato',
+    'distortion', 'echo', 'stereoDelay', 'reverb', 'convolution', 'compressor'
+  ];
+
+  const EFFECT_LABELS = {
+    echo: 'Echo / Delay',
+    reverb: 'Reverb / Hall',
+    pitch: 'Pitch Shift',
+    chorus: 'Chorus',
+    flanger: 'Flanger',
+    phaser: 'Phaser',
+    tremolo: 'Tremolo',
+    vibrato: 'Vibrato',
+    distortion: 'Distortion / Overdrive',
+    compressor: 'Compressor',
+    stereoDelay: 'Stereo Delay',
+    convolution: 'Convolution Reverb'
+  };
+
+  const EFFECT_PARAMS = {
+    echo: [
+      ['delayTime', 'Delay Time', 0.02, 1.2, 0.01, 'sec'],
+      ['feedback', 'Feedback', 0, 0.85, 0.01, 'pct01'],
+      ['mix', 'Wet/Dry Mix', 0, 1, 0.01, 'pct01']
+    ],
+    reverb: [
+      ['roomSize', 'Room Size', 0, 1, 0.01, 'pct01'],
+      ['decay', 'Decay', 0.2, 8, 0.1, 'sec'],
+      ['preDelay', 'Pre-Delay', 0, 0.2, 0.005, 'msSec'],
+      ['mix', 'Wet/Dry Mix', 0, 1, 0.01, 'pct01']
+    ],
+    pitch: [
+      ['pitch', 'Pitch', -12, 12, 1, 'semi'],
+      ['semitones', 'Semitones', -12, 12, 1, 'semi'],
+      ['fineTune', 'Fine Tune', -100, 100, 1, 'cent']
+    ],
+    chorus: [
+      ['rate', 'Rate', 0.05, 8, 0.05, 'hz'],
+      ['depth', 'Depth', 0, 1, 0.01, 'pct01'],
+      ['delay', 'Delay', 0.005, 0.06, 0.001, 'msSec'],
+      ['feedback', 'Feedback', 0, 0.75, 0.01, 'pct01'],
+      ['mix', 'Mix', 0, 1, 0.01, 'pct01']
+    ],
+    flanger: [
+      ['rate', 'Rate', 0.05, 5, 0.05, 'hz'],
+      ['depth', 'Depth', 0, 1, 0.01, 'pct01'],
+      ['feedback', 'Feedback', 0, 0.9, 0.01, 'pct01'],
+      ['delay', 'Delay', 0.001, 0.02, 0.001, 'msSec'],
+      ['mix', 'Mix', 0, 1, 0.01, 'pct01']
+    ],
+    phaser: [
+      ['rate', 'Rate', 0.05, 6, 0.05, 'hz'],
+      ['depth', 'Depth', 0, 1, 0.01, 'pct01'],
+      ['feedback', 'Feedback', 0, 0.85, 0.01, 'pct01'],
+      ['frequency', 'Frequency', 200, 3000, 10, 'hz'],
+      ['mix', 'Mix', 0, 1, 0.01, 'pct01']
+    ],
+    tremolo: [
+      ['rate', 'Rate', 0.1, 12, 0.1, 'hz'],
+      ['depth', 'Depth', 0, 1, 0.01, 'pct01']
+    ],
+    vibrato: [
+      ['rate', 'Rate', 0.1, 10, 0.1, 'hz'],
+      ['depth', 'Depth', 0, 1, 0.01, 'pct01']
+    ],
+    distortion: [
+      ['drive', 'Drive', 0, 1, 0.01, 'pct01'],
+      ['tone', 'Tone', 500, 8000, 50, 'hz'],
+      ['output', 'Output', -18, 6, 0.5, 'db'],
+      ['mix', 'Mix', 0, 1, 0.01, 'pct01']
+    ],
+    compressor: [
+      ['threshold', 'Threshold', -60, 0, 0.5, 'db'],
+      ['knee', 'Knee', 0, 40, 0.5, 'db'],
+      ['ratio', 'Ratio', 1, 20, 0.1, 'ratioX'],
+      ['attack', 'Attack', 0.001, 0.2, 0.001, 'msSec'],
+      ['release', 'Release', 0.02, 1, 0.01, 'sec'],
+      ['makeup', 'Makeup Gain', -12, 18, 0.5, 'db']
+    ],
+    stereoDelay: [
+      ['leftDelay', 'Left Delay', 0.01, 1.2, 0.01, 'sec'],
+      ['rightDelay', 'Right Delay', 0.01, 1.2, 0.01, 'sec'],
+      ['feedback', 'Feedback', 0, 0.85, 0.01, 'pct01'],
+      ['mix', 'Mix', 0, 1, 0.01, 'pct01']
+    ],
+    convolution: [
+      ['impulse', 'Impulse Response', 0, 3, 1, 'impulse'],
+      ['preDelay', 'Pre-Delay', 0, 0.2, 0.005, 'msSec'],
+      ['mix', 'Wet/Dry Mix', 0, 1, 0.01, 'pct01'],
+      ['output', 'Output Level', -18, 6, 0.5, 'db']
+    ]
+  };
+
+  const EFFECT_DEFAULTS = {
+    echo: { enabled: false, delayTime: 0.18, feedback: 0.28, mix: 0.28 },
+    reverb: { enabled: false, roomSize: 0.35, decay: 1.4, preDelay: 0.018, mix: 0.2 },
+    pitch: { enabled: false, pitch: 0, semitones: 0, fineTune: 0, preserveTempo: true },
+    chorus: { enabled: false, rate: 1.2, depth: 0.35, delay: 0.022, feedback: 0.12, mix: 0.28 },
+    flanger: { enabled: false, rate: 0.35, depth: 0.55, feedback: 0.45, delay: 0.006, mix: 0.35 },
+    phaser: { enabled: false, rate: 0.45, depth: 0.55, feedback: 0.35, frequency: 900, mix: 0.35 },
+    tremolo: { enabled: false, rate: 4, depth: 0.45 },
+    vibrato: { enabled: false, rate: 5, depth: 0.18 },
+    distortion: { enabled: false, drive: 0.35, tone: 3200, output: -3, mix: 0.3 },
+    compressor: { enabled: false, threshold: -24, knee: 12, ratio: 3, attack: 0.008, release: 0.18, makeup: 3 },
+    stereoDelay: { enabled: false, leftDelay: 0.18, rightDelay: 0.28, feedback: 0.25, mix: 0.28 },
+    convolution: { enabled: false, impulse: 1, preDelay: 0.02, mix: 0.22, output: -3 }
+  };
+
+  const EFFECT_PRESETS = {
+    'Small Room': { effects: { reverb: { enabled: true, roomSize: 0.22, decay: 0.75, preDelay: 0.008, mix: 0.14 } } },
+    'Large Hall': { effects: { reverb: { enabled: true, roomSize: 0.78, decay: 3.8, preDelay: 0.028, mix: 0.32 } } },
+    Cathedral: { effects: { reverb: { enabled: true, roomSize: 0.95, decay: 6.6, preDelay: 0.045, mix: 0.42 }, convolution: { enabled: true, impulse: 2, preDelay: 0.03, mix: 0.24, output: -4 } } },
+    'Slapback Echo': { effects: { echo: { enabled: true, delayTime: 0.075, feedback: 0.12, mix: 0.32 } } },
+    'Deep Echo': { effects: { echo: { enabled: true, delayTime: 0.48, feedback: 0.56, mix: 0.34 } } },
+    'Wide Chorus': { effects: { chorus: { enabled: true, rate: 1.05, depth: 0.72, delay: 0.028, feedback: 0.18, mix: 0.42 } } },
+    Dreamy: { effects: { chorus: { enabled: true, rate: 0.65, depth: 0.42, delay: 0.026, feedback: 0.1, mix: 0.3 }, reverb: { enabled: true, roomSize: 0.6, decay: 3.2, preDelay: 0.026, mix: 0.3 }, echo: { enabled: true, delayTime: 0.32, feedback: 0.24, mix: 0.16 } } },
+    Telephone: { settings: { highPass: true, highPassFreq: 300, lowPass: true, lowPassFreq: 3400, dfxDynamicBoost: 4 }, effects: { distortion: { enabled: true, drive: 0.18, tone: 2400, output: -4, mix: 0.22 }, compressor: { enabled: true, threshold: -28, knee: 8, ratio: 5, attack: 0.004, release: 0.12, makeup: 4 } } },
+    Radio: { settings: { highPass: true, highPassFreq: 120, lowPass: true, lowPassFreq: 6500, dfxDynamicBoost: 3 }, effects: { distortion: { enabled: true, drive: 0.12, tone: 3600, output: -3, mix: 0.18 }, compressor: { enabled: true, threshold: -24, knee: 10, ratio: 3.5, attack: 0.006, release: 0.16, makeup: 2.5 } } },
+    Megaphone: { settings: { highPass: true, highPassFreq: 220, lowPass: true, lowPassFreq: 5200, equalizer: [-8, -8, -5, 2, 7, 9, 5, 0, -6, -10] }, effects: { distortion: { enabled: true, drive: 0.42, tone: 2600, output: -5, mix: 0.42 }, compressor: { enabled: true, threshold: -30, knee: 6, ratio: 7, attack: 0.003, release: 0.1, makeup: 5 } } },
+    'Lo-Fi': { settings: { highPass: true, highPassFreq: 90, lowPass: true, lowPassFreq: 7200 }, effects: { distortion: { enabled: true, drive: 0.16, tone: 2200, output: -4, mix: 0.24 }, chorus: { enabled: true, rate: 0.35, depth: 0.16, delay: 0.018, feedback: 0.05, mix: 0.16 }, vibrato: { enabled: true, rate: 4.8, depth: 0.06 } } },
+    'Vocal Wide': { settings: { dfxSurround: 3, dfxDynamicBoost: 2 }, effects: { chorus: { enabled: true, rate: 0.8, depth: 0.22, delay: 0.022, feedback: 0.05, mix: 0.16 }, reverb: { enabled: true, roomSize: 0.32, decay: 1.2, preDelay: 0.018, mix: 0.09 }, compressor: { enabled: true, threshold: -20, knee: 14, ratio: 2.2, attack: 0.008, release: 0.2, makeup: 1.5 } } },
+    Concert: { settings: { dfxSurround: 4 }, effects: { reverb: { enabled: true, roomSize: 0.72, decay: 3.4, preDelay: 0.035, mix: 0.28 }, stereoDelay: { enabled: true, leftDelay: 0.16, rightDelay: 0.24, feedback: 0.18, mix: 0.16 }, chorus: { enabled: true, rate: 0.55, depth: 0.14, delay: 0.02, feedback: 0.04, mix: 0.12 } } }
+  };
 
   const KEYS = {
     settings: 'uae_settings',
@@ -168,6 +293,87 @@
     return fallback || defaultSettings().equalizer;
   }
 
+  function cloneEffectDefaults() {
+    const out = {};
+    for (const key of EFFECT_ORDER) out[key] = Object.assign({}, EFFECT_DEFAULTS[key]);
+    return out;
+  }
+
+  function defaultEffectsState() {
+    return {
+      order: EFFECT_ORDER.slice(),
+      preset: 'Custom',
+      userPresets: {},
+      restoreSettings: null,
+      effects: cloneEffectDefaults()
+    };
+  }
+
+  function sanitizeEffectOrder(value) {
+    const seen = {};
+    const out = [];
+    if (Array.isArray(value)) {
+      for (let i = 0; i < value.length; i++) {
+        const key = value[i];
+        if (EFFECT_DEFAULTS[key] && !seen[key]) {
+          seen[key] = true;
+          out.push(key);
+        }
+      }
+    }
+    for (const key of EFFECT_ORDER) {
+      if (!seen[key]) out.push(key);
+    }
+    return out;
+  }
+
+  function sanitizeOneEffect(key, value) {
+    const d = EFFECT_DEFAULTS[key];
+    const out = Object.assign({}, d);
+    if (!value || typeof value !== 'object') value = {};
+    out.enabled = typeof value.enabled === 'boolean' ? value.enabled : d.enabled;
+    const defs = EFFECT_PARAMS[key] || [];
+    for (let i = 0; i < defs.length; i++) {
+      const p = defs[i];
+      const name = p[0];
+      const n = clampNum(value[name], p[2], p[3]);
+      if (n !== null) out[name] = n;
+    }
+    if (key === 'pitch') out.preserveTempo = typeof value.preserveTempo === 'boolean' ? value.preserveTempo : d.preserveTempo;
+    return out;
+  }
+
+  function sanitizeEffectsState(value) {
+    const d = defaultEffectsState();
+    if (!value || typeof value !== 'object') value = {};
+    const out = {
+      order: sanitizeEffectOrder(value.order),
+      preset: typeof value.preset === 'string' ? value.preset : d.preset,
+      userPresets: {},
+      restoreSettings: value.restoreSettings && typeof value.restoreSettings === 'object' ? Object.assign({}, value.restoreSettings) : null,
+      effects: {}
+    };
+    const srcEffects = value.effects && typeof value.effects === 'object' ? value.effects : {};
+    for (const key of EFFECT_ORDER) out.effects[key] = sanitizeOneEffect(key, srcEffects[key]);
+    const rawPresets = value.userPresets && typeof value.userPresets === 'object' ? value.userPresets : {};
+    for (const name in rawPresets) {
+      if (!Object.prototype.hasOwnProperty.call(rawPresets, name)) continue;
+      const cleanName = String(name).trim().slice(0, 80);
+      if (!cleanName) continue;
+      const p = rawPresets[name];
+      if (!p || typeof p !== 'object') continue;
+      out.userPresets[cleanName] = {
+        order: sanitizeEffectOrder(p.order),
+        effects: sanitizeEffectsState({ effects: p.effects }).effects,
+        settings: p.settings && typeof p.settings === 'object' ? sanitizeSettings(Object.assign({}, p.settings, { effects: defaultEffectsState() })) : null
+      };
+    }
+    if (out.preset !== 'Custom' && out.preset !== 'Modified' && out.preset !== 'Reset All Effects' && !EFFECT_PRESETS[out.preset] && !out.userPresets[out.preset]) {
+      out.preset = 'Custom';
+    }
+    return out;
+  }
+
   function dfxPresetMatches(name, s) {
     const p = DFX_PRESETS[name];
     return !!p &&
@@ -206,6 +412,7 @@
     out.limiterLookahead = clampNum(s.limiterLookahead, 0, 20); if (out.limiterLookahead === null) out.limiterLookahead = d.limiterLookahead;
     out._lastBass = clampNum(s._lastBass, 0, 100); if (out._lastBass === null) out._lastBass = d._lastBass;
     out._lastTreble = clampNum(s._lastTreble, 0, 100); if (out._lastTreble === null) out._lastTreble = d._lastTreble;
+    out.effects = sanitizeEffectsState(s.effects);
     return out;
   }
 
@@ -353,6 +560,8 @@
       N.dfxAmbDelay.connect(N.dfxAmbFilter);
       N.dfxAmbFilter.connect(N.dfxAmbWet);
       N.dfxAmbWet.connect(N.dfxAmbSum);
+      N.effectsIn = ctx.createGain();
+      N.effectsOut = ctx.createGain();
       N.dfxAmbSum.connect(N.mSplit);
       N.mSplit.connect(N.midGL, 0);
       N.mSplit.connect(N.midGR, 1);
@@ -368,7 +577,9 @@
       N.sideOutL.connect(N.mMerge, 0, 0);
       N.sideSum.connect(N.sideOutR);
       N.sideOutR.connect(N.mMerge, 0, 1);
-      N.mMerge.connect(N.pan);
+      N.mMerge.connect(N.effectsIn);
+      N.effectsIn.connect(N.effectsOut);
+      N.effectsOut.connect(N.pan);
       N.mMerge.connect(N.mSplit2);
       N.mSplit2.connect(N.anL, 0);
       N.mSplit2.connect(N.anR, 1);
@@ -389,6 +600,9 @@
       this.limBypassed = false;
       this.autoeqCount = 0;
       this.autoeqActive = false;
+      this.effectNodes = {};
+      this.effectChainOrder = [];
+      this.initEffects();
       return N;
     },
 
@@ -408,6 +622,303 @@
       this.limBypassed = on;
       if (on) { N.limIn.disconnect(N.limDelay); N.limIn.connect(N.out); }
       else { N.limIn.disconnect(N.out); N.limIn.connect(N.limDelay); }
+    },
+
+    ramp(param, value, tc) {
+      if (!this.ctx || !param) return;
+      try { param.setTargetAtTime(value, this.ctx.currentTime, tc || PARAM_TIME_CONSTANT); } catch (_) {
+        try { param.value = value; } catch (_) {}
+      }
+    },
+
+    effectMix(effect, enabled, mix) {
+      const wet = enabled ? Math.min(1, Math.max(0, typeof mix === 'number' ? mix : 1)) : 0;
+      const dry = enabled ? 1 - wet : 1;
+      this.ramp(effect.dry.gain, dry, DB_TIME_CONSTANT);
+      this.ramp(effect.wet.gain, wet, DB_TIME_CONSTANT);
+    },
+
+    makeImpulse(seconds, decay, tone) {
+      const ctx = this.ctx;
+      const len = Math.max(1, Math.floor(ctx.sampleRate * seconds));
+      const buf = ctx.createBuffer(2, len, ctx.sampleRate);
+      for (let ch = 0; ch < 2; ch++) {
+        const data = buf.getChannelData(ch);
+        for (let i = 0; i < len; i++) {
+          const t = i / len;
+          const env = Math.pow(1 - t, decay);
+          data[i] = (Math.random() * 2 - 1) * env * tone;
+        }
+      }
+      return buf;
+    },
+
+    distortionCurve(drive) {
+      const samples = 1024;
+      const curve = new Float32Array(samples);
+      const k = 1 + drive * 80;
+      for (let i = 0; i < samples; i++) {
+        const x = i * 2 / samples - 1;
+        curve[i] = (1 + k) * x / (1 + k * Math.abs(x));
+      }
+      return curve;
+    },
+
+    createEffect(key) {
+      const ctx = this.ctx;
+      const E = { key: key, input: ctx.createGain(), output: ctx.createGain(), dry: ctx.createGain(), wet: ctx.createGain() };
+      E.input.connect(E.dry);
+      E.dry.connect(E.output);
+      E.wet.connect(E.output);
+      switch (key) {
+        case 'echo':
+          E.delay = ctx.createDelay(1.5);
+          E.feedback = ctx.createGain();
+          E.input.connect(E.delay);
+          E.delay.connect(E.feedback);
+          E.feedback.connect(E.delay);
+          E.delay.connect(E.wet);
+          break;
+        case 'reverb':
+          E.preDelay = ctx.createDelay(0.3);
+          E.convolver = ctx.createConvolver();
+          E.input.connect(E.preDelay);
+          E.preDelay.connect(E.convolver);
+          E.convolver.connect(E.wet);
+          break;
+        case 'pitch':
+          E.delay = ctx.createDelay(0.08);
+          E.lfo = ctx.createOscillator();
+          E.lfoGain = ctx.createGain();
+          E.input.connect(E.delay);
+          E.lfo.connect(E.lfoGain);
+          E.lfoGain.connect(E.delay.delayTime);
+          E.delay.connect(E.wet);
+          try { E.lfo.start(); } catch (_) {}
+          break;
+        case 'chorus':
+        case 'flanger':
+        case 'vibrato':
+          E.delay = ctx.createDelay(0.12);
+          E.feedback = ctx.createGain();
+          E.lfo = ctx.createOscillator();
+          E.lfoGain = ctx.createGain();
+          E.input.connect(E.delay);
+          E.delay.connect(E.feedback);
+          E.feedback.connect(E.delay);
+          E.lfo.connect(E.lfoGain);
+          E.lfoGain.connect(E.delay.delayTime);
+          E.delay.connect(E.wet);
+          try { E.lfo.start(); } catch (_) {}
+          break;
+        case 'phaser':
+          E.filters = [];
+          let prev = E.input;
+          for (let i = 0; i < 4; i++) {
+            const f = ctx.createBiquadFilter();
+            f.type = 'allpass';
+            f.Q.value = 1.2;
+            E.filters.push(f);
+            prev.connect(f);
+            prev = f;
+          }
+          E.feedback = ctx.createGain();
+          E.fbDelay = ctx.createDelay(0.01);
+          E.fbDelay.delayTime.value = 0.001;
+          E.lfo = ctx.createOscillator();
+          E.lfoGain = ctx.createGain();
+          E.lfo.connect(E.lfoGain);
+          for (let i = 0; i < E.filters.length; i++) E.lfoGain.connect(E.filters[i].frequency);
+          prev.connect(E.fbDelay);
+          E.fbDelay.connect(E.feedback);
+          E.feedback.connect(E.filters[0]);
+          prev.connect(E.wet);
+          try { E.lfo.start(); } catch (_) {}
+          break;
+        case 'tremolo':
+          E.mod = ctx.createGain();
+          E.lfo = ctx.createOscillator();
+          E.lfoGain = ctx.createGain();
+          E.input.connect(E.mod);
+          E.lfo.connect(E.lfoGain);
+          E.lfoGain.connect(E.mod.gain);
+          E.mod.connect(E.wet);
+          try { E.lfo.start(); } catch (_) {}
+          break;
+        case 'distortion':
+          E.shaper = ctx.createWaveShaper();
+          E.tone = ctx.createBiquadFilter();
+          E.level = ctx.createGain();
+          E.tone.type = 'lowpass';
+          E.input.connect(E.shaper);
+          E.shaper.connect(E.tone);
+          E.tone.connect(E.level);
+          E.level.connect(E.wet);
+          break;
+        case 'compressor':
+          E.comp = ctx.createDynamicsCompressor();
+          E.makeup = ctx.createGain();
+          E.input.connect(E.comp);
+          E.comp.connect(E.makeup);
+          E.makeup.connect(E.wet);
+          break;
+        case 'stereoDelay':
+          E.split = ctx.createChannelSplitter(2);
+          E.merge = ctx.createChannelMerger(2);
+          E.left = ctx.createDelay(1.5);
+          E.right = ctx.createDelay(1.5);
+          E.feedback = ctx.createGain();
+          E.fbL = ctx.createGain();
+          E.fbR = ctx.createGain();
+          E.input.connect(E.split);
+          E.split.connect(E.left, 0);
+          E.split.connect(E.right, 1);
+          E.left.connect(E.fbL);
+          E.right.connect(E.fbR);
+          E.fbL.connect(E.feedback);
+          E.fbR.connect(E.feedback);
+          E.feedback.connect(E.left);
+          E.feedback.connect(E.right);
+          E.left.connect(E.merge, 0, 0);
+          E.right.connect(E.merge, 0, 1);
+          E.merge.connect(E.wet);
+          break;
+        case 'convolution':
+          E.preDelay = ctx.createDelay(0.3);
+          E.convolver = ctx.createConvolver();
+          E.level = ctx.createGain();
+          E.input.connect(E.preDelay);
+          E.preDelay.connect(E.convolver);
+          E.convolver.connect(E.level);
+          E.level.connect(E.wet);
+          break;
+      }
+      this.effectMix(E, false, 0);
+      return E;
+    },
+
+    initEffects() {
+      this.effectNodes = {};
+      for (const key of EFFECT_ORDER) this.effectNodes[key] = this.createEffect(key);
+      this.reconnectEffects(EFFECT_ORDER);
+    },
+
+    reconnectEffects(order) {
+      const N = this.nodes;
+      if (!N || !this.effectNodes) return;
+      const clean = sanitizeEffectOrder(order);
+      const same = clean.length === this.effectChainOrder.length && clean.every((k, i) => k === this.effectChainOrder[i]);
+      if (same) return;
+      try {
+        N.effectsIn.disconnect();
+        for (const key of EFFECT_ORDER) this.effectNodes[key].output.disconnect();
+      } catch (_) {}
+      let prev = N.effectsIn;
+      for (const key of clean) {
+        const e = this.effectNodes[key];
+        prev.connect(e.input);
+        prev = e.output;
+      }
+      prev.connect(N.effectsOut);
+      this.effectChainOrder = clean.slice();
+    },
+
+    applyEffects(state) {
+      if (!state || !this.effectNodes) return;
+      this.reconnectEffects(state.order);
+      const effects = state.effects || {};
+      for (const key of EFFECT_ORDER) {
+        const e = this.effectNodes[key];
+        const v = effects[key] || EFFECT_DEFAULTS[key];
+        switch (key) {
+          case 'echo':
+            this.ramp(e.delay.delayTime, v.delayTime);
+            this.ramp(e.feedback.gain, v.feedback);
+            this.effectMix(e, v.enabled, v.mix);
+            break;
+          case 'reverb': {
+            this.ramp(e.preDelay.delayTime, v.preDelay);
+            const sig = Math.round(v.decay * 10) + ':' + Math.round(v.roomSize * 100);
+            if (e._sig !== sig) {
+              e._sig = sig;
+              e.convolver.buffer = this.makeImpulse(v.decay, 1.5 + v.roomSize * 3, 0.6 + v.roomSize * 0.6);
+            }
+            this.effectMix(e, v.enabled, v.mix);
+            break;
+          }
+          case 'pitch': {
+            const semi = v.semitones + v.pitch + v.fineTune / 100;
+            const amt = Math.min(0.018, Math.abs(semi) * 0.0015);
+            this.ramp(e.delay.delayTime, 0.018 + amt);
+            this.ramp(e.lfo.frequency, 0.25 + Math.abs(semi) * 0.12);
+            this.ramp(e.lfoGain.gain, semi === 0 ? 0 : (semi > 0 ? amt : -amt));
+            this.effectMix(e, v.enabled, v.enabled ? 0.55 : 0);
+            break;
+          }
+          case 'chorus':
+          case 'flanger':
+          case 'vibrato': {
+            const base = key === 'vibrato' ? 0.012 : v.delay;
+            const depth = key === 'flanger' ? v.depth * 0.004 : v.depth * 0.012;
+            this.ramp(e.delay.delayTime, base);
+            this.ramp(e.lfo.frequency, v.rate);
+            this.ramp(e.lfoGain.gain, depth);
+            this.ramp(e.feedback.gain, v.feedback || 0);
+            this.effectMix(e, v.enabled, key === 'vibrato' ? Math.min(0.8, v.depth * 2) : v.mix);
+            break;
+          }
+          case 'phaser':
+            this.ramp(e.lfo.frequency, v.rate);
+            this.ramp(e.lfoGain.gain, v.depth * 700);
+            this.ramp(e.feedback.gain, v.feedback);
+            for (let i = 0; i < e.filters.length; i++) this.ramp(e.filters[i].frequency, v.frequency + i * 180);
+            this.effectMix(e, v.enabled, v.mix);
+            break;
+          case 'tremolo':
+            this.ramp(e.lfo.frequency, v.rate);
+            this.ramp(e.mod.gain, 1 - v.depth * 0.5);
+            this.ramp(e.lfoGain.gain, v.depth * 0.5);
+            this.effectMix(e, v.enabled, 1);
+            break;
+          case 'distortion':
+            if (e._drive !== v.drive) {
+              e._drive = v.drive;
+              e.shaper.curve = this.distortionCurve(v.drive);
+              e.shaper.oversample = '4x';
+            }
+            this.ramp(e.tone.frequency, v.tone);
+            this.ramp(e.level.gain, db2gain(v.output));
+            this.effectMix(e, v.enabled, v.mix);
+            break;
+          case 'compressor':
+            this.ramp(e.comp.threshold, v.threshold);
+            this.ramp(e.comp.knee, v.knee);
+            this.ramp(e.comp.ratio, v.ratio);
+            this.ramp(e.comp.attack, v.attack);
+            this.ramp(e.comp.release, v.release);
+            this.ramp(e.makeup.gain, db2gain(v.makeup));
+            this.effectMix(e, v.enabled, 1);
+            break;
+          case 'stereoDelay':
+            this.ramp(e.left.delayTime, v.leftDelay);
+            this.ramp(e.right.delayTime, v.rightDelay);
+            this.ramp(e.feedback.gain, v.feedback);
+            this.effectMix(e, v.enabled, v.mix);
+            break;
+          case 'convolution': {
+            this.ramp(e.preDelay.delayTime, v.preDelay);
+            this.ramp(e.level.gain, db2gain(v.output));
+            const seconds = [0.8, 2.2, 5.8, 1.2][Math.round(v.impulse)] || 2.2;
+            const sig = Math.round(v.impulse) + ':' + Math.round(seconds * 10);
+            if (e._sig !== sig) {
+              e._sig = sig;
+              e.convolver.buffer = this.makeImpulse(seconds, 2.2, 0.8);
+            }
+            this.effectMix(e, v.enabled, v.mix);
+            break;
+          }
+        }
+      }
     },
     // ----------------------------------------------------------------
     // Parameter-scheduler robustness. Some Chromium builds ignore
@@ -504,7 +1015,7 @@
         case 'dfxAmbDelay': s.node = N.dfxAmbDelay; s.prev = N.dfxPunch; s.next = N.dfxAmbFilter; break;
         case 'sideOutL': s.node = N.sideOutL; s.prev = N.sideSum; s.next = N.mMerge; s.nextPort = 0; break;
         case 'sideOutR': s.node = N.sideOutR; s.prev = N.sideSum; s.next = N.mMerge; s.nextPort = 1; break;
-        case 'pan':      s.node = N.pan;      s.prev = N.mMerge; s.next = N.compIn;   break;
+        case 'pan':      s.node = N.pan;      s.prev = N.effectsOut; s.next = N.compIn; break;
         case 'comp':     s.node = N.comp;     s.prev = N.compIn; s.next = N.makeup;   break;
         case 'makeup':   s.node = N.makeup;   s.prev = N.comp;   s.next = N.limIn;    break;
         case 'limDelay': s.node = N.limDelay; s.prev = N.limIn;  s.next = N.lim;      break;
@@ -690,6 +1201,7 @@
       this.setP('dfxPunch', N.dfxPunch.gain, punchDb, function () { return mkBiquad('peaking', 145, 1.1, punchDb); });
       this.setP('dfxAmbWet', N.dfxAmbWet.gain, ambWet, function () { return mkGain(ambWet); });
       this.setP('dfxAmbDelay', N.dfxAmbDelay.delayTime, ambDelay, function () { return mkDelay(ambDelay); });
+      this.applyEffects(s.effects);
       this.setP('sideOutL', N.sideOutL.gain, w, function () { return mkGain(w); });
       this.setP('sideOutR', N.sideOutR.gain, -w, function () { return mkGain(-w); });
       this.setP('pan', N.pan.pan, 0, function () {
@@ -854,6 +1366,82 @@
     settings.dfxSurround = preset.dfxSurround;
     settings.dfxDynamicBoost = preset.dfxDynamicBoost;
     settings.dfxHyperBass = preset.dfxHyperBass;
+    applyAll();
+    persistSettingsNow();
+    UI.syncUI();
+  }
+
+  function markEffectsModified() {
+    if (settings.effects.preset !== 'Custom' && settings.effects.preset !== 'Modified') {
+      settings.effects.preset = 'Modified';
+    }
+    if (UI.controls.effectPreset) UI.controls.effectPreset.set(settings.effects.preset);
+  }
+
+  function restoreEffectPresetSettings() {
+    const restore = settings.effects && settings.effects.restoreSettings;
+    if (!restore || typeof restore !== 'object') return;
+    const keepEffects = settings.effects;
+    keepEffects.restoreSettings = null;
+    settings = sanitizeSettings(Object.assign({}, settings, restore, { effects: keepEffects }));
+  }
+
+  function rememberEffectPresetSettings(presetSettings) {
+    if (!presetSettings || typeof presetSettings !== 'object') return;
+    if (settings.effects.restoreSettings) return;
+    const snap = {};
+    for (const key in presetSettings) {
+      if (key === 'effects') continue;
+      if (key === 'equalizer' && Array.isArray(settings.equalizer)) snap.equalizer = settings.equalizer.slice();
+      else if (Object.prototype.hasOwnProperty.call(settings, key)) snap[key] = settings[key];
+    }
+    settings.effects.restoreSettings = snap;
+  }
+
+  function resetAllEffects() {
+    const userPresets = settings.effects && settings.effects.userPresets ? settings.effects.userPresets : {};
+    restoreEffectPresetSettings();
+    settings.effects = defaultEffectsState();
+    settings.effects.userPresets = userPresets;
+    settings.effects.preset = 'Reset All Effects';
+    applyAll();
+    persistSettingsNow();
+    UI.syncUI();
+  }
+
+  function applyEffectPreset(name) {
+    if (name === 'Reset All Effects') {
+      resetAllEffects();
+      return;
+    }
+    const user = settings.effects.userPresets && settings.effects.userPresets[name];
+    const builtin = EFFECT_PRESETS[name];
+    const preset = user || builtin;
+    if (!preset) {
+      restoreEffectPresetSettings();
+      settings.effects.preset = 'Custom';
+      persistSettings();
+      UI.syncUI();
+      return;
+    }
+    restoreEffectPresetSettings();
+    const next = sanitizeEffectsState(settings.effects);
+    next.effects = cloneEffectDefaults();
+    if (preset.order) next.order = sanitizeEffectOrder(preset.order);
+    if (preset.effects) {
+      for (const key in preset.effects) {
+        if (EFFECT_DEFAULTS[key]) next.effects[key] = sanitizeOneEffect(key, Object.assign({}, next.effects[key], preset.effects[key]));
+      }
+    }
+    next.preset = name;
+    settings.effects = next;
+    if (preset.settings) {
+      rememberEffectPresetSettings(preset.settings);
+      const keepEffects = settings.effects;
+      const merged = sanitizeSettings(Object.assign({}, settings, preset.settings));
+      merged.effects = keepEffects;
+      settings = merged;
+    }
     applyAll();
     persistSettingsNow();
     UI.syncUI();
@@ -1239,6 +1827,24 @@
 .uae-list-item.active { background: #1a2530; }
 .uae-list-item.active .uae-li-name { color: #4ade80; }
 
+.uae-modal-effects { width: 560px; }
+.uae-effects-top { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; margin-bottom: 10px; }
+.uae-effects-actions { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-bottom: 10px; }
+.uae-effects-actions .uae-btn { padding: 5px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.uae-effect-list { display: flex; flex-direction: column; gap: 6px; }
+.uae-effect-item { border: 1px solid #232330; border-radius: 6px; background: #171720; }
+.uae-effect-item.active { border-color: #2d5f7a; background: #17222b; }
+.uae-effect-line { display: grid; grid-template-columns: 22px 42px 1fr 34px 54px; gap: 7px; align-items: center; padding: 7px 8px; }
+.uae-drag { color: #6b7280; cursor: grab; text-align: center; user-select: none; font-size: 16px; }
+.uae-drag:active { cursor: grabbing; }
+.uae-effect-name { font-size: 14px; color: #dfe2ea; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uae-effect-item.active .uae-effect-name { color: #4ade80; }
+.uae-icon-btn { width: 30px; min-width: 30px; height: 28px; padding: 0; text-align: center; }
+.uae-effect-config { display: none; padding: 2px 10px 10px 10px; border-top: 1px solid #232330; }
+.uae-effect-config.open { display: block; }
+.uae-effect-config .uae-trow { margin-top: 8px; }
+.uae-effect-item.dragging { opacity: .55; }
+
 .uae-input { width: 100%; background: #1a1a22; color: #e8e8ee; border: 1px solid #2e2e3a; border-radius: 6px; padding: 7px 9px; font-size: 14px; outline: none; }
 .uae-input:focus { border-color: #58c6f7; }
 
@@ -1335,12 +1941,16 @@
         persistUI();
       });
       head.addEventListener('dblclick', () => this.togglePanel());
+      window.addEventListener('resize', () => {
+        for (const name in this.activeModals) this.placeModal(name);
+      });
 
       // Modals (single instance each)
       this.buildModal('equalizer', 'Equalizer', 'E', () => this.buildEqModal());
       this.buildModal('autoeq', 'AutoEq Presets', 'Q', () => this.buildAutoEqModal());
       this.buildModal('limiter', 'Limiter', '', () => this.buildLimiterModal());
       this.buildModal('filters', 'Filters', 'F', () => this.buildFiltersModal());
+      this.buildModal('effects', 'Effects', 'S', () => this.buildEffectsModal());
 
       this.syncUI();
       this.updateStatus();
@@ -1477,9 +2087,9 @@
       body.appendChild(toggles);
 
       // Section buttons
-      const secNames = ['equalizer', 'autoeq', 'filters'];
-      const secLabels = ['Equalizer', 'AutoEq', 'Filters'];
-      const secKeys = ['E', 'Q', 'F'];
+      const secNames = ['equalizer', 'autoeq', 'filters', 'effects'];
+      const secLabels = ['Equalizer', 'AutoEq', 'Filters', 'Effects'];
+      const secKeys = ['E', 'Q', 'F', 'S'];
       const secBtns = [];
       for (let i = 0; i < secNames.length; i++) {
         const b = this.btn(secLabels[i] + ' [' + secKeys[i] + ']', 'Open ' + secLabels[i].toLowerCase() + ' (Ctrl+Shift+' + secKeys[i] + ')');
@@ -1543,7 +2153,7 @@
     },
 
     defaultModalPosition: function (name) {
-      const widths = { equalizer: 620, autoeq: 420, limiter: 420, filters: 420 };
+      const widths = { equalizer: 620, autoeq: 420, limiter: 420, filters: 420, effects: 560 };
       const w = widths[name] || 420;
       const offset = Object.keys(this.modalEls).indexOf(name);
       return {
@@ -1786,6 +2396,252 @@
       body.appendChild(this.h('div', { class: 'uae-hint', text: 'HPF removes low-frequency rumble (20\u2013500 Hz). LPF rolls off highs (1\u201320 kHz) for a warmer sound.' }));
     },
 
+    effectFmt: function (kind) {
+      const S = this;
+      const map = {
+        pct01: (v) => Math.round(v * 100) + '%',
+        sec: (v) => (Math.round(v * 1000) / 1000) + ' s',
+        msSec: (v) => Math.round(v * 1000) + ' ms',
+        semi: (v) => (v > 0 ? '+' : '') + Math.round(v) + ' st',
+        cent: (v) => (v > 0 ? '+' : '') + Math.round(v) + ' ct',
+        ratioX: (v) => (Math.round(v * 10) / 10) + ':1',
+        pan: (v) => v === 0 ? 'Center' : (v < 0 ? Math.round(Math.abs(v) * 100) + '% L' : Math.round(v * 100) + '% R'),
+        impulse: (v) => ['Small', 'Plate', 'Cathedral', 'Spring'][Math.round(v)] || 'Plate',
+        hz: S.fmt.hz,
+        db: S.fmt.db
+      };
+      return map[kind] || ((v) => String(v));
+    },
+
+    buildEffectsModal: function () {
+      const m = this.modalEls.effects;
+      const body = m.body;
+      const select = this.h('select', { class: 'uae-select' });
+      select.addEventListener('change', () => applyEffectPreset(select.value));
+      this.controls.effectPreset = {
+        input: select,
+        set: function (v) { select.value = v; }
+      };
+      const resetAll = this.btn('Reset All', 'Disable all effects and restore defaults');
+      resetAll.addEventListener('click', () => resetAllEffects());
+      body.appendChild(this.h('div', { class: 'uae-effects-top' }, [select, resetAll]));
+
+      const saveB = this.btn('Save Preset', 'Save current effect setup');
+      const renameB = this.btn('Rename Preset', 'Rename selected user preset');
+      const deleteB = this.btn('Delete Preset', 'Delete selected user preset');
+      const exportB = this.btn('Export Preset', 'Export selected/current effects preset');
+      const importB = this.btn('Import Preset', 'Import effects preset JSON');
+      saveB.addEventListener('click', () => this.saveEffectPreset());
+      renameB.addEventListener('click', () => this.renameEffectPreset());
+      deleteB.addEventListener('click', () => this.deleteEffectPreset());
+      exportB.addEventListener('click', () => this.exportEffectPreset());
+      importB.addEventListener('click', () => this.importEffectPreset());
+      body.appendChild(this.h('div', { class: 'uae-effects-actions' }, [saveB, renameB, deleteB, exportB, importB]));
+
+      const list = this.h('div', { class: 'uae-effect-list' });
+      this.els.effectList = list;
+      body.appendChild(list);
+      body.appendChild(this.h('div', { class: 'uae-hint', text: 'Drag effects to change processing order. Config opens only the selected effect parameters.' }));
+      this.renderEffectPresetOptions();
+      this.renderEffectsList();
+    },
+
+    currentEffectPresetData: function () {
+      const st = sanitizeEffectsState(settings.effects);
+      return {
+        name: st.preset || 'Custom',
+        order: st.order.slice(),
+        effects: JSON.parse(JSON.stringify(st.effects)),
+        settings: sanitizeSettings(Object.assign({}, settings, { effects: defaultEffectsState() }))
+      };
+    },
+
+    renderEffectPresetOptions: function () {
+      const c = this.controls.effectPreset;
+      if (!c || !c.input) return;
+      const select = c.input;
+      select.textContent = '';
+      select.appendChild(this.h('option', { value: 'Custom', text: 'Custom' }));
+      select.appendChild(this.h('option', { value: 'Modified', text: 'Modified' }));
+      for (const name in EFFECT_PRESETS) select.appendChild(this.h('option', { value: name, text: name }));
+      select.appendChild(this.h('option', { value: 'Reset All Effects', text: 'Reset All Effects' }));
+      const users = settings.effects.userPresets || {};
+      for (const name in users) select.appendChild(this.h('option', { value: name, text: name + ' (User)' }));
+      select.value = settings.effects.preset || 'Custom';
+    },
+
+    renderEffectsList: function () {
+      const list = this.els.effectList;
+      if (!list) return;
+      list.textContent = '';
+      settings.effects = sanitizeEffectsState(settings.effects);
+      for (const key of settings.effects.order) {
+        const eff = settings.effects.effects[key];
+        const item = this.h('div', { class: 'uae-effect-item' + (eff.enabled ? ' active' : '') });
+        item.dataset.effect = key;
+        const drag = this.h('span', { class: 'uae-drag', title: 'Drag to reorder', draggable: 'true', text: '\u2630' });
+        const sw = this.h('input', { type: 'checkbox', class: 'uae-switch' });
+        sw.checked = !!eff.enabled;
+        sw.addEventListener('change', () => {
+          settings.effects.effects[key].enabled = sw.checked;
+          markEffectsModified();
+          applyAll();
+          persistSettings();
+          this.renderEffectsList();
+        });
+        const name = this.h('span', { class: 'uae-effect-name', text: EFFECT_LABELS[key] });
+        const cfg = this.btn('\u2699', 'Configure ' + EFFECT_LABELS[key]);
+        cfg.className += ' uae-icon-btn';
+        const reset = this.btn('Reset', 'Reset only ' + EFFECT_LABELS[key]);
+        const conf = this.h('div', { class: 'uae-effect-config' });
+        cfg.addEventListener('click', () => conf.classList.toggle('open'));
+        reset.addEventListener('click', () => {
+          const keep = settings.effects.effects[key].enabled;
+          settings.effects.effects[key] = Object.assign({}, EFFECT_DEFAULTS[key]);
+          settings.effects.effects[key].enabled = keep;
+          markEffectsModified();
+          applyAll();
+          persistSettings();
+          this.renderEffectsList();
+        });
+        drag.addEventListener('dragstart', (e) => {
+          item.classList.add('dragging');
+          try { e.dataTransfer.setData('text/plain', key); } catch (_) {}
+        });
+        drag.addEventListener('dragend', () => item.classList.remove('dragging'));
+        item.addEventListener('dragover', (e) => e.preventDefault());
+        item.addEventListener('drop', (e) => {
+          e.preventDefault();
+          let from = '';
+          try { from = e.dataTransfer.getData('text/plain'); } catch (_) {}
+          const to = key;
+          if (!from || from === to) return;
+          const order = settings.effects.order.slice();
+          const fi = order.indexOf(from);
+          const ti = order.indexOf(to);
+          if (fi < 0 || ti < 0) return;
+          order.splice(fi, 1);
+          order.splice(ti, 0, from);
+          settings.effects.order = sanitizeEffectOrder(order);
+          markEffectsModified();
+          applyAll();
+          persistSettingsNow();
+          this.renderEffectsList();
+        });
+        item.appendChild(this.h('div', { class: 'uae-effect-line' }, [drag, sw, name, cfg, reset]));
+        this.fillEffectConfig(key, conf);
+        item.appendChild(conf);
+        list.appendChild(item);
+      }
+    },
+
+    fillEffectConfig: function (key, container) {
+      const params = EFFECT_PARAMS[key] || [];
+      for (let i = 0; i < params.length; i++) {
+        const p = params[i];
+        const ctrl = this.sliderRow(p[1], {
+          min: p[2], max: p[3], step: p[4], value: settings.effects.effects[key][p[0]], fmt: this.effectFmt(p[5]),
+          oninput: (v) => {
+            settings.effects.effects[key][p[0]] = v;
+            markEffectsModified();
+            applyAll();
+            persistSettings();
+          }
+        });
+        container.appendChild(ctrl.row);
+      }
+      if (key === 'pitch') {
+        const tempo = this.toggleRow('Preserve Tempo', settings.effects.effects.pitch.preserveTempo, (v) => {
+          settings.effects.effects.pitch.preserveTempo = v;
+          markEffectsModified();
+          applyAll();
+          persistSettings();
+        });
+        container.appendChild(tempo.row);
+      }
+    },
+
+    saveEffectPreset: function () {
+      const name = prompt('Preset name:', settings.effects.preset && settings.effects.preset !== 'Modified' ? settings.effects.preset : '');
+      const clean = name ? String(name).trim().slice(0, 80) : '';
+      if (!clean) return;
+      settings.effects.userPresets[clean] = this.currentEffectPresetData();
+      settings.effects.userPresets[clean].name = clean;
+      settings.effects.preset = clean;
+      persistSettingsNow();
+      this.renderEffectPresetOptions();
+      this.syncUI();
+    },
+
+    renameEffectPreset: function () {
+      const oldName = settings.effects.preset;
+      if (!settings.effects.userPresets || !settings.effects.userPresets[oldName]) { alert('Select a user preset first.'); return; }
+      const next = prompt('New preset name:', oldName);
+      const clean = next ? String(next).trim().slice(0, 80) : '';
+      if (!clean || clean === oldName) return;
+      settings.effects.userPresets[clean] = settings.effects.userPresets[oldName];
+      settings.effects.userPresets[clean].name = clean;
+      delete settings.effects.userPresets[oldName];
+      settings.effects.preset = clean;
+      persistSettingsNow();
+      this.renderEffectPresetOptions();
+    },
+
+    deleteEffectPreset: function () {
+      const name = settings.effects.preset;
+      if (!settings.effects.userPresets || !settings.effects.userPresets[name]) { alert('Select a user preset first.'); return; }
+      if (!confirm('Delete preset "' + name + '"?')) return;
+      delete settings.effects.userPresets[name];
+      settings.effects.preset = 'Custom';
+      persistSettingsNow();
+      this.renderEffectPresetOptions();
+    },
+
+    exportEffectPreset: function () {
+      const data = this.currentEffectPresetData();
+      try {
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'uae-effects-' + (data.name || 'preset').replace(/[^a-z0-9_-]+/gi, '-').toLowerCase() + '.json';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+      } catch (e) { alert('Export failed: ' + e.message); }
+    },
+
+    importEffectPreset: function () {
+      const inp = document.createElement('input');
+      inp.type = 'file';
+      inp.accept = '.json,application/json';
+      inp.addEventListener('change', () => {
+        const file = inp.files && inp.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          let data = null;
+          try { data = JSON.parse(String(reader.result)); } catch (e) { alert('Invalid JSON file.'); return; }
+          if (!data || typeof data !== 'object') { alert('Invalid effects preset.'); return; }
+          const name = String(data.name || file.name.replace(/\.json$/i, '') || 'Imported Preset').trim().slice(0, 80);
+          const preset = {
+            name: name,
+            order: sanitizeEffectOrder(data.order),
+            effects: sanitizeEffectsState({ effects: data.effects }).effects,
+            settings: data.settings && typeof data.settings === 'object' ? sanitizeSettings(Object.assign({}, data.settings, { effects: defaultEffectsState() })) : null
+          };
+          settings.effects.userPresets[name] = preset;
+          settings.effects.preset = name;
+          applyEffectPreset(name);
+        };
+        reader.readAsText(file);
+      });
+      document.body.appendChild(inp);
+      inp.click();
+      inp.remove();
+    },
+
     // ---------- state sync ----------
     syncUI: function () {
       const c = this.controls;
@@ -1808,6 +2664,11 @@
       if (c.eq) this.syncEq();
       if (c.hpf) { c.hpf.set(settings.highPass); c.hpfFreq.disable(!settings.highPass); c.hpfFreq.set(settings.highPassFreq); }
       if (c.lpf) { c.lpf.set(settings.lowPass); c.lpfFreq.disable(!settings.lowPass); c.lpfFreq.set(settings.lowPassFreq); }
+      if (c.effectPreset) {
+        this.renderEffectPresetOptions();
+        c.effectPreset.set(settings.effects.preset || 'Custom');
+      }
+      if (this.els.effectList) this.renderEffectsList();
     },
 
     updateStatus: function () {
@@ -1853,6 +2714,7 @@
           case 'e': UI.openModal('equalizer'); break;
           case 'q': UI.openModal('autoeq'); break;
           case 'f': UI.openModal('filters'); break;
+          case 's': UI.openModal('effects'); break;
           case 'b': toggleBass(); break;
           case 't': toggleTreble(); break;
           case 'l': settings.highPass = !settings.highPass; afterQuick(); break;
