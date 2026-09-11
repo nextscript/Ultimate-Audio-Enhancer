@@ -3,7 +3,7 @@
 // @name:de      Ultimate Audio Enhancer (Echtzeit-Audio-Verbesserung)
 // @namespace    https://github.com/nextscript
 // @author       Freak288
-// @version      1.0.1
+// @version      1.0.2
 // @description  Real-time audio enhancement for HTML5 video and audio
 // @description:de Echtzeit-Audio-Verbesserung für HTML5-Video und Audio
 // @match        *://*/*
@@ -25,7 +25,7 @@
   // ============================================================================
   // 1. Configuration
   // ============================================================================
-  const VERSION = '1.0.1';
+  const VERSION = '1.0.2';
   const AUTOEQ_BASE = 'https://raw.githubusercontent.com/nextscript/AutoEq/master/results/';
   const AUTOEQ_INDEX_URL = AUTOEQ_BASE + 'INDEX.md';
   const EXPORT_FILENAME = 'ultimate-audio-enhancer-config.json';
@@ -153,7 +153,7 @@
   const EFFECT_DEFAULTS = {
     echo: { enabled: false, delayTime: 0.18, feedback: 0.28, mix: 0.28 },
     reverb: { enabled: false, roomSize: 0.35, decay: 1.4, preDelay: 0.018, mix: 0.2 },
-    pitch: { enabled: false, pitch: 0, semitones: 0, fineTune: 0, preserveTempo: true },
+    pitch: { enabled: false, pitch: 0, semitones: 0, fineTune: 0, preserveTempo: false },
     chorus: { enabled: false, rate: 1.2, depth: 0.35, delay: 0.022, feedback: 0.12, mix: 0.28 },
     flanger: { enabled: false, rate: 0.35, depth: 0.55, feedback: 0.45, delay: 0.006, mix: 0.35 },
     phaser: { enabled: false, rate: 0.45, depth: 0.55, feedback: 0.35, frequency: 900, mix: 0.35 },
@@ -823,10 +823,55 @@
       this.effectChainOrder = clean.slice();
     },
 
+    applyPitchPlayback(pitch) {
+      const on = !!(settings.enabled && pitch && pitch.enabled);
+      const semi = on ? (pitch.semitones + pitch.pitch + pitch.fineTune / 100) : 0;
+      const active = on && Math.abs(semi) > 0.001;
+      const factor = Math.pow(2, semi / 12);
+      for (let i = 0; i < routedMedia.length; i++) {
+        const el = routedMedia[i];
+        if (!el || !el.__uae_source) continue;
+        try {
+          if (active) {
+            if (typeof el.__uae_basePlaybackRate !== 'number') {
+              el.__uae_basePlaybackRate = typeof el.playbackRate === 'number' && isFinite(el.playbackRate) ? el.playbackRate : 1;
+              el.__uae_basePreservesPitch = {
+                std: 'preservesPitch' in el ? el.preservesPitch : null,
+                moz: 'mozPreservesPitch' in el ? el.mozPreservesPitch : null,
+                webkit: 'webkitPreservesPitch' in el ? el.webkitPreservesPitch : null
+              };
+            }
+            const nextRate = Math.min(16, Math.max(0.0625, el.__uae_basePlaybackRate * factor));
+            el.__uae_pitchActive = true;
+            el.__uae_pitchTargetRate = nextRate;
+            if ('preservesPitch' in el) el.preservesPitch = false;
+            if ('mozPreservesPitch' in el) el.mozPreservesPitch = false;
+            if ('webkitPreservesPitch' in el) el.webkitPreservesPitch = false;
+            if (Math.abs(el.playbackRate - nextRate) > 0.0001) el.playbackRate = nextRate;
+          } else if (typeof el.__uae_basePlaybackRate === 'number') {
+            el.__uae_pitchActive = false;
+            delete el.__uae_pitchTargetRate;
+            el.playbackRate = el.__uae_basePlaybackRate;
+            if (el.__uae_basePreservesPitch) {
+              if ('preservesPitch' in el && el.__uae_basePreservesPitch.std !== null) el.preservesPitch = el.__uae_basePreservesPitch.std;
+              if ('mozPreservesPitch' in el && el.__uae_basePreservesPitch.moz !== null) el.mozPreservesPitch = el.__uae_basePreservesPitch.moz;
+              if ('webkitPreservesPitch' in el && el.__uae_basePreservesPitch.webkit !== null) el.webkitPreservesPitch = el.__uae_basePreservesPitch.webkit;
+            }
+            delete el.__uae_basePlaybackRate;
+            delete el.__uae_basePreservesPitch;
+          } else {
+            el.__uae_pitchActive = false;
+            delete el.__uae_pitchTargetRate;
+          }
+        } catch (_) {}
+      }
+    },
+
     applyEffects(state) {
       if (!state || !this.effectNodes) return;
       this.reconnectEffects(state.order);
       const effects = state.effects || {};
+      this.applyPitchPlayback(effects.pitch || EFFECT_DEFAULTS.pitch);
       for (const key of EFFECT_ORDER) {
         const e = this.effectNodes[key];
         const v = effects[key] || EFFECT_DEFAULTS[key];
@@ -848,11 +893,10 @@
           }
           case 'pitch': {
             const semi = v.semitones + v.pitch + v.fineTune / 100;
-            const amt = Math.min(0.018, Math.abs(semi) * 0.0015);
-            this.ramp(e.delay.delayTime, 0.018 + amt);
+            this.ramp(e.delay.delayTime, 0.018);
             this.ramp(e.lfo.frequency, 0.25 + Math.abs(semi) * 0.12);
-            this.ramp(e.lfoGain.gain, semi === 0 ? 0 : (semi > 0 ? amt : -amt));
-            this.effectMix(e, v.enabled, v.enabled ? 0.55 : 0);
+            this.ramp(e.lfoGain.gain, 0);
+            this.effectMix(e, false, 0);
             break;
           }
           case 'chorus':
@@ -1257,6 +1301,7 @@
   // 9. Media Detection
   // ============================================================================
   const sources = new WeakMap(); // element -> { source }
+  const routedMedia = [];
 
   function registerMedia(el) {
     if (!el || el.nodeType !== 1) return;
@@ -1284,11 +1329,29 @@
     el.__uae_source = source;
     try { source.connect(Engine.nodes.input); } catch (_) {}
     sources.set(el, { source: source });
+    routedMedia.push(el);
+    if (Engine.nodes) Engine.applyPitchPlayback(settings.effects.effects.pitch);
     // resume the context on playback (autoplay elements may lack a page gesture)
     el.addEventListener('playing', function () {
       if (settings.enabled && Engine.ctx && Engine.ctx.state === 'suspended') {
         try { Engine.ctx.resume().catch(function () {}); } catch (_) {}
       }
+    });
+    el.addEventListener('ratechange', function () {
+      if (!el.__uae_pitchActive || typeof el.__uae_pitchTargetRate !== 'number' || el.__uae_rateFixing) return;
+      if (Math.abs(el.playbackRate - el.__uae_pitchTargetRate) < 0.0001) return;
+      el.__uae_rateFixing = true;
+      setTimeout(function () {
+        try {
+          if (el.__uae_pitchActive && typeof el.__uae_pitchTargetRate === 'number') {
+            if ('preservesPitch' in el) el.preservesPitch = false;
+            if ('mozPreservesPitch' in el) el.mozPreservesPitch = false;
+            if ('webkitPreservesPitch' in el) el.webkitPreservesPitch = false;
+            el.playbackRate = el.__uae_pitchTargetRate;
+          }
+        } catch (_) {}
+        el.__uae_rateFixing = false;
+      }, 0);
     });
     // shadow DOM
     if (el.shadowRoot) scanShadow(el.shadowRoot);
