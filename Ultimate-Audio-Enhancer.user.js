@@ -3,7 +3,7 @@
 // @name:de      Ultimate Audio Enhancer (Echtzeit-Audio-Verbesserung)
 // @namespace    https://github.com/nextscript
 // @author       Freak288
-// @version      1.0.2
+// @version      1.0.3
 // @description  Real-time audio enhancement for HTML5 video and audio
 // @description:de Echtzeit-Audio-Verbesserung für HTML5-Video und Audio
 // @match        *://*/*
@@ -25,7 +25,7 @@
   // ============================================================================
   // 1. Configuration
   // ============================================================================
-  const VERSION = '1.0.2';
+  const VERSION = '1.0.3';
   const AUTOEQ_BASE = 'https://raw.githubusercontent.com/nextscript/AutoEq/master/results/';
   const AUTOEQ_INDEX_URL = AUTOEQ_BASE + 'INDEX.md';
   const EXPORT_FILENAME = 'ultimate-audio-enhancer-config.json';
@@ -39,6 +39,7 @@
   const EQ_GAIN_MAX = 15;
   const DB_TIME_CONSTANT = 0.02;
   const PARAM_TIME_CONSTANT = 0.05;
+  const GRAPH_START_FADE_TIME = 0.04;
   const LIMITER = { knee: 0, ratio: 20 };
 
   const DFX_PRESETS = {
@@ -426,13 +427,18 @@
   let persistTimer = null;
   function persistSettings() {
     clearTimeout(persistTimer);
-    persistTimer = setTimeout(function () { Storage.set(KEYS.settings, settings); }, 400);
+    persistTimer = null;
+    Storage.set(KEYS.settings, settings);
   }
   function persistSettingsNow() {
     clearTimeout(persistTimer);
     Storage.set(KEYS.settings, settings);
   }
   function persistUI() { Storage.set(KEYS.ui, uiState); }
+  function flushPendingSettings() {
+    if (!persistTimer) return;
+    persistSettingsNow();
+  }
 
   // ============================================================================
   // 7. Audio Engine
@@ -443,6 +449,7 @@
     ctx: null,
     nodes: null,
     gestureBound: false,
+    didStartupFade: false,
 
     ensure() {
       if (this.ctx) {
@@ -624,6 +631,20 @@
       else { N.limIn.disconnect(N.out); N.limIn.connect(N.limDelay); }
     },
 
+    fadeInOutputOnce() {
+      const N = this.nodes;
+      if (!this.ctx || !N || !N.out || this.didStartupFade) return;
+      this.didStartupFade = true;
+      const t = this.ctx.currentTime;
+      try {
+        N.out.gain.cancelScheduledValues(t);
+        N.out.gain.setValueAtTime(0, t);
+        N.out.gain.setTargetAtTime(1, t, GRAPH_START_FADE_TIME);
+      } catch (_) {
+        try { N.out.gain.value = 1; } catch (_) {}
+      }
+    },
+
     ramp(param, value, tc) {
       if (!this.ctx || !param) return;
       try { param.setTargetAtTime(value, this.ctx.currentTime, tc || PARAM_TIME_CONSTANT); } catch (_) {
@@ -667,6 +688,8 @@
     createEffect(key) {
       const ctx = this.ctx;
       const E = { key: key, input: ctx.createGain(), output: ctx.createGain(), dry: ctx.createGain(), wet: ctx.createGain() };
+      E.dry.gain.value = 1;
+      E.wet.gain.value = 0;
       E.input.connect(E.dry);
       E.dry.connect(E.output);
       E.wet.connect(E.output);
@@ -674,6 +697,7 @@
         case 'echo':
           E.delay = ctx.createDelay(1.5);
           E.feedback = ctx.createGain();
+          E.feedback.gain.value = 0;
           E.input.connect(E.delay);
           E.delay.connect(E.feedback);
           E.feedback.connect(E.delay);
@@ -690,6 +714,7 @@
           E.delay = ctx.createDelay(0.08);
           E.lfo = ctx.createOscillator();
           E.lfoGain = ctx.createGain();
+          E.lfoGain.gain.value = 0;
           E.input.connect(E.delay);
           E.lfo.connect(E.lfoGain);
           E.lfoGain.connect(E.delay.delayTime);
@@ -703,6 +728,8 @@
           E.feedback = ctx.createGain();
           E.lfo = ctx.createOscillator();
           E.lfoGain = ctx.createGain();
+          E.feedback.gain.value = 0;
+          E.lfoGain.gain.value = 0;
           E.input.connect(E.delay);
           E.delay.connect(E.feedback);
           E.feedback.connect(E.delay);
@@ -727,6 +754,8 @@
           E.fbDelay.delayTime.value = 0.001;
           E.lfo = ctx.createOscillator();
           E.lfoGain = ctx.createGain();
+          E.feedback.gain.value = 0;
+          E.lfoGain.gain.value = 0;
           E.lfo.connect(E.lfoGain);
           for (let i = 0; i < E.filters.length; i++) E.lfoGain.connect(E.filters[i].frequency);
           prev.connect(E.fbDelay);
@@ -739,6 +768,8 @@
           E.mod = ctx.createGain();
           E.lfo = ctx.createOscillator();
           E.lfoGain = ctx.createGain();
+          E.mod.gain.value = 1;
+          E.lfoGain.gain.value = 0;
           E.input.connect(E.mod);
           E.lfo.connect(E.lfoGain);
           E.lfoGain.connect(E.mod.gain);
@@ -770,6 +801,7 @@
           E.feedback = ctx.createGain();
           E.fbL = ctx.createGain();
           E.fbR = ctx.createGain();
+          E.feedback.gain.value = 0;
           E.input.connect(E.split);
           E.split.connect(E.left, 0);
           E.split.connect(E.right, 1);
@@ -800,27 +832,32 @@
     initEffects() {
       this.effectNodes = {};
       for (const key of EFFECT_ORDER) this.effectNodes[key] = this.createEffect(key);
-      this.reconnectEffects(EFFECT_ORDER);
+      this.reconnectEffects(EFFECT_ORDER, {});
     },
 
-    reconnectEffects(order) {
+    reconnectEffects(order, effects) {
       const N = this.nodes;
       if (!N || !this.effectNodes) return;
       const clean = sanitizeEffectOrder(order);
-      const same = clean.length === this.effectChainOrder.length && clean.every((k, i) => k === this.effectChainOrder[i]);
+      const active = [];
+      effects = effects || {};
+      for (const key of clean) {
+        if (key !== 'pitch' && effects[key] && effects[key].enabled) active.push(key);
+      }
+      const same = active.length === this.effectChainOrder.length && active.every((k, i) => k === this.effectChainOrder[i]);
       if (same) return;
       try {
         N.effectsIn.disconnect();
         for (const key of EFFECT_ORDER) this.effectNodes[key].output.disconnect();
       } catch (_) {}
       let prev = N.effectsIn;
-      for (const key of clean) {
+      for (const key of active) {
         const e = this.effectNodes[key];
         prev.connect(e.input);
         prev = e.output;
       }
       prev.connect(N.effectsOut);
-      this.effectChainOrder = clean.slice();
+      this.effectChainOrder = active.slice();
     },
 
     applyPitchPlayback(pitch) {
@@ -869,8 +906,8 @@
 
     applyEffects(state) {
       if (!state || !this.effectNodes) return;
-      this.reconnectEffects(state.order);
       const effects = state.effects || {};
+      this.reconnectEffects(state.order, effects);
       this.applyPitchPlayback(effects.pitch || EFFECT_DEFAULTS.pitch);
       for (const key of EFFECT_ORDER) {
         const e = this.effectNodes[key];
@@ -1327,6 +1364,7 @@
       return;
     }
     el.__uae_source = source;
+    Engine.fadeInOutputOnce();
     try { source.connect(Engine.nodes.input); } catch (_) {}
     sources.set(el, { source: source });
     routedMedia.push(el);
@@ -2291,6 +2329,10 @@
           settings.equalizer[idx] = v;
           markCustom(); applyAll(); persistSettings();
         });
+        input.addEventListener('change', () => {
+          settings.equalizer[idx] = parseFloat(input.value);
+          persistSettingsNow();
+        });
         col.appendChild(val);
         col.appendChild(this.h('div', { class: 'uae-eq-slider-wrap' }, input));
         col.appendChild(this.h('span', { class: 'uae-lbl', text: lbl }));
@@ -2301,7 +2343,10 @@
       const flat = this.btn('Flat', 'Reset all bands to 0 dB');
       flat.addEventListener('click', () => {
         settings.equalizer = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-        markCustom(); applyAll(); persistSettings();
+        markCustom();
+        if (AutoEq.active || AutoEq.selected || AutoEq.cached) AutoEq.unload();
+        else applyAll();
+        persistSettingsNow();
         UI.syncEq();
       });
       const btns = this.h('div', { class: 'uae-btn-row' }, [flat]);
@@ -2898,6 +2943,8 @@
   function initialize() {
     try {
       UI.build();
+      window.addEventListener('pagehide', flushPendingSettings);
+      window.addEventListener('beforeunload', flushPendingSettings);
       startObserving();
       console.info('[UAE] v' + VERSION + ' loaded. ' + (Storage.gm ? 'GM storage' : 'localStorage') + ' backend.');
     } catch (e) {
