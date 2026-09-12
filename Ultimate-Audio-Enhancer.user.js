@@ -3,7 +3,7 @@
 // @name:de      Ultimate Audio Enhancer (Echtzeit-Audio-Verbesserung)
 // @namespace    https://github.com/nextscript
 // @author       Freak288
-// @version      1.0.5
+// @version      1.0.6
 // @description  Real-time audio enhancement for HTML5 video and audio
 // @description:de Echtzeit-Audio-Verbesserung für HTML5-Video und Audio
 // @match        *://*/*
@@ -25,7 +25,7 @@
   // ============================================================================
   // 1. Configuration
   // ============================================================================
-  const VERSION = '1.0.5';
+  const VERSION = '1.0.6';
   const AUTOEQ_BASE = 'https://raw.githubusercontent.com/nextscript/AutoEq/master/results/';
   const AUTOEQ_INDEX_URL = AUTOEQ_BASE + 'INDEX.md';
   const EXPORT_FILENAME = 'ultimate-audio-enhancer-config.json';
@@ -185,6 +185,7 @@
   const KEYS = {
     settings: 'uae_settings',
     ui: 'uae_ui',
+    eqPresets: 'uae_eq_presets',
     autoeqIndex: 'uae_autoeq_index',
     autoeqSelected: 'uae_autoeq_selected',
     autoeqCache: 'uae_autoeq_cache',
@@ -304,6 +305,38 @@
     return fallback || defaultSettings().equalizer;
   }
 
+  function defaultEqPresetState() {
+    return {
+      preset: 'Custom',
+      userPresets: {}
+    };
+  }
+
+  function sanitizeEqPresetState(value) {
+    const d = defaultEqPresetState();
+    if (!value || typeof value !== 'object') value = {};
+    const out = {
+      preset: typeof value.preset === 'string' ? value.preset : d.preset,
+      userPresets: {}
+    };
+    const rawPresets = value.userPresets && typeof value.userPresets === 'object' ? value.userPresets : {};
+    for (const name in rawPresets) {
+      if (!Object.prototype.hasOwnProperty.call(rawPresets, name)) continue;
+      const cleanName = String(name).trim().slice(0, 80);
+      if (!cleanName) continue;
+      const p = rawPresets[name];
+      const eq = p && typeof p === 'object' && !Array.isArray(p)
+        ? (p.equalizer || p.values || p.eq)
+        : p;
+      out.userPresets[cleanName] = {
+        name: cleanName,
+        equalizer: sanitizeEq(eq, defaultSettings().equalizer).slice()
+      };
+    }
+    if (out.preset !== 'Custom' && !out.userPresets[out.preset]) out.preset = 'Custom';
+    return out;
+  }
+
   function cloneEffectDefaults() {
     const out = {};
     for (const key of EFFECT_ORDER) out[key] = Object.assign({}, EFFECT_DEFAULTS[key]);
@@ -373,10 +406,13 @@
       if (!cleanName) continue;
       const p = rawPresets[name];
       if (!p || typeof p !== 'object') continue;
+      const presetSettings = p.settings && typeof p.settings === 'object'
+        ? sanitizeSettings(Object.assign({}, p.settings, { effects: defaultEffectsState() }))
+        : null;
       out.userPresets[cleanName] = {
         order: sanitizeEffectOrder(p.order),
         effects: sanitizeEffectsState({ effects: p.effects }).effects,
-        settings: p.settings && typeof p.settings === 'object' ? sanitizeSettings(Object.assign({}, p.settings, { effects: defaultEffectsState() })) : null
+        settings: presetSettings
       };
     }
     if (out.preset !== 'Custom' && out.preset !== 'Modified' && out.preset !== 'Reset All Effects' && !EFFECT_PRESETS[out.preset] && !out.userPresets[out.preset]) {
@@ -442,6 +478,7 @@
   let settings = sanitizeSettings(Storage.get(KEYS.settings, null)) || defaultSettings();
   let uiState = Storage.get(KEYS.ui, null) || {};
   if (typeof uiState !== 'object' || uiState === null) uiState = {};
+  let eqPresetState = sanitizeEqPresetState(Storage.get(KEYS.eqPresets, null));
   let blockedSites = sanitizeBlockedSites(Storage.get(KEYS.blockedSites, null));
 
   let persistTimer = null;
@@ -455,6 +492,7 @@
     Storage.set(KEYS.settings, settings);
   }
   function persistUI() { Storage.set(KEYS.ui, uiState); }
+  function persistEqPresets() { Storage.set(KEYS.eqPresets, eqPresetState); }
   function persistBlockedSites() { Storage.set(KEYS.blockedSites, blockedSites); }
   function flushPendingSettings() {
     if (!persistTimer) return;
@@ -1821,6 +1859,35 @@
     // Kept as a no-op hook for shared slider/shortcut paths after preset removal.
   }
 
+  function ensureEqPresets() {
+    eqPresetState = sanitizeEqPresetState(eqPresetState);
+    return eqPresetState;
+  }
+
+  function markEqCustom() {
+    const st = ensureEqPresets();
+    st.preset = 'Custom';
+    if (UI.controls.eqPreset) UI.controls.eqPreset.set('Custom');
+  }
+
+  function applyEqPreset(name) {
+    const st = ensureEqPresets();
+    const preset = st.userPresets && st.userPresets[name];
+    if (!preset) {
+      st.preset = 'Custom';
+      persistEqPresets();
+      UI.renderEqPresetOptions();
+      return;
+    }
+    settings.equalizer = sanitizeEq(preset.equalizer, settings.equalizer).slice();
+    st.preset = name;
+    if (AutoEq.active || AutoEq.selected || AutoEq.cached) AutoEq.unload();
+    else applyAll();
+    persistEqPresets();
+    persistSettingsNow();
+    UI.syncUI();
+  }
+
   function markDfxCustom() {
     settings.dfxPreset = 'Custom';
     if (UI.controls.dfxPreset) UI.controls.dfxPreset.set('Custom');
@@ -1920,7 +1987,9 @@
     const enabled = settings.enabled;
     settings = sanitizeSettings(defaultSettings());
     settings.enabled = enabled;
+    ensureEqPresets().preset = 'Custom';
     applyAll();
+    persistEqPresets();
     persistSettingsNow();
   }
 
@@ -1994,6 +2063,8 @@
 
   function applyAutoEqToEqualizer(data) {
     settings.equalizer = autoEqToGraphicEq(data);
+    markEqCustom();
+    persistEqPresets();
     applyAll();
     persistSettingsNow();
     UI.syncEq();
@@ -2145,6 +2216,58 @@
       return b;
     },
 
+    textDialog: function (title, initial, submitLabel, onSubmit) {
+      const root = this.els.root || document.getElementById('uae-root') || document.body;
+      const input = this.h('input', { class: 'uae-input', type: 'text', value: initial || '', maxlength: 80 });
+      const error = this.h('div', { class: 'uae-dialog-error' });
+      const ok = this.btn(submitLabel || 'OK', title);
+      ok.className += ' primary';
+      const cancel = this.btn('Cancel', 'Cancel');
+      const dialog = this.h('div', { class: 'uae-dialog' }, [
+        this.h('div', { class: 'uae-dialog-box' }, [
+          this.h('div', { class: 'uae-dialog-title', text: title }),
+          input,
+          error,
+          this.h('div', { class: 'uae-dialog-actions' }, [cancel, ok])
+        ])
+      ]);
+      const close = () => dialog.remove();
+      const submit = () => {
+        const msg = onSubmit(String(input.value || '').trim(), error);
+        if (msg) error.textContent = msg;
+        else close();
+      };
+      ok.addEventListener('click', submit);
+      cancel.addEventListener('click', close);
+      dialog.addEventListener('pointerdown', (e) => { if (e.target === dialog) close(); });
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') submit();
+        else if (e.key === 'Escape') close();
+      });
+      root.appendChild(dialog);
+      setTimeout(() => { input.focus(); input.select(); }, 0);
+    },
+
+    confirmDialog: function (title, message, submitLabel, onConfirm) {
+      const root = this.els.root || document.getElementById('uae-root') || document.body;
+      const ok = this.btn(submitLabel || 'OK', title);
+      ok.className += ' danger';
+      const cancel = this.btn('Cancel', 'Cancel');
+      const dialog = this.h('div', { class: 'uae-dialog' }, [
+        this.h('div', { class: 'uae-dialog-box' }, [
+          this.h('div', { class: 'uae-dialog-title', text: title }),
+          this.h('div', { class: 'uae-statusline', text: message }),
+          this.h('div', { class: 'uae-dialog-actions' }, [cancel, ok])
+        ])
+      ]);
+      const close = () => dialog.remove();
+      ok.addEventListener('click', () => { onConfirm(); close(); });
+      cancel.addEventListener('click', close);
+      dialog.addEventListener('pointerdown', (e) => { if (e.target === dialog) close(); });
+      root.appendChild(dialog);
+      setTimeout(() => ok.focus(), 0);
+    },
+
     fmt: {
       db: (v) => (v > 0 ? '+' : '') + v + ' dB',
       pct: (v) => Math.round(v) + '%',
@@ -2264,6 +2387,7 @@
 
 .uae-modal { position: fixed; left: 24px; top: 90px; width: 420px; max-width: calc(100vw - 28px); max-height: calc(100vh - 50px); display: none; flex-direction: column; background: #14141a; border: 1px solid #2e2e3a; border-radius: 10px; box-shadow: 0 6px 30px rgba(0,0,0,.7); z-index: 2147483648; }
 .uae-modal-equalizer { width: 620px; }
+.uae-modal-eqPresetManager { width: 460px; }
 .uae-modal-filters { width: 560px; }
 .uae-modal.open { display: flex; }
 .uae-modal-head { display: flex; align-items: center; padding: 9px 12px; border-bottom: 1px solid #2e2e3a; background: #1a1a22; border-radius: 10px 10px 0 0; cursor: move; }
@@ -2285,6 +2409,30 @@
 .uae-eq-col input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #58c6f7; border: 2px solid #e8e8ee; margin-top: -7px; }
 .uae-eq-col input[type=range]::-moz-range-track { height: 4px; border-radius: 4px; background: transparent; }
 .uae-eq-col input[type=range]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: #58c6f7; border: 2px solid #e8e8ee; }
+.uae-eq-presets { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: center; margin-bottom: 12px; }
+.uae-eq-presets .uae-btn { padding: 6px 8px; white-space: nowrap; }
+.uae-preset-manager-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; margin-bottom: 6px; }
+.uae-preset-manager-top .uae-btn { white-space: nowrap; }
+.uae-preset-manager-error { min-height: 16px; color: #f87171; font-size: 12px; margin-bottom: 8px; }
+.uae-preset-manager-error.ok { color: #4ade80; }
+.uae-preset-list { max-height: 320px; overflow-y: auto; border: 1px solid #232330; border-radius: 6px; }
+.uae-preset-item { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 6px; align-items: center; padding: 7px 8px; border-bottom: 1px solid #1e1e28; }
+.uae-preset-item:last-child { border-bottom: none; }
+.uae-preset-item.active { background: #1a2530; }
+.uae-preset-name { color: #dfe2ea; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uae-preset-item.active .uae-preset-name { color: #4ade80; }
+.uae-preset-item .uae-btn { padding: 4px 8px; }
+.uae-dialog {
+  position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,.45); z-index: 2147483658;
+}
+.uae-dialog-box {
+  width: 320px; max-width: calc(100vw - 32px); background: #14141a; border: 1px solid #2e2e3a;
+  border-radius: 8px; box-shadow: 0 10px 32px rgba(0,0,0,.72); padding: 14px;
+}
+.uae-dialog-title { font-size: 15px; font-weight: 600; color: #e8e8ee; margin-bottom: 10px; }
+.uae-dialog-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 10px; }
+.uae-dialog-error { min-height: 16px; color: #f87171; font-size: 12px; margin-top: 6px; }
 
 .uae-adv { display: none; margin-top: 8px; padding-top: 8px; border-top: 1px solid #232330; }
 .uae-adv.open { display: block; }
@@ -2429,6 +2577,7 @@
 
       // Modals (single instance each)
       this.buildModal('equalizer', 'Equalizer', 'E', () => this.buildEqModal());
+      this.buildModal('eqPresetManager', 'Equalizer Preset Manager', '', () => this.buildEqPresetManagerModal());
       this.buildModal('autoeq', 'AutoEq Presets', 'Q', () => this.buildAutoEqModal());
       this.buildModal('limiter', 'Limiter', '', () => this.buildLimiterModal());
       this.buildModal('filters', 'Filters', 'F', () => this.buildFiltersModal());
@@ -2643,7 +2792,7 @@
     },
 
     defaultModalPosition: function (name) {
-      const widths = { equalizer: 620, autoeq: 420, limiter: 420, filters: 560, effects: 560, blockedSites: 420 };
+      const widths = { equalizer: 620, eqPresetManager: 460, autoeq: 420, limiter: 420, filters: 560, effects: 560, blockedSites: 420 };
       const w = widths[name] || 420;
       const offset = Object.keys(this.modalEls).indexOf(name);
       return {
@@ -2704,6 +2853,23 @@
     // ---------- modal bodies ----------
     buildEqModal: function () {
       const m = this.modalEls.equalizer;
+      const select = this.h('select', { class: 'uae-select' });
+      select.addEventListener('change', () => {
+        if (select.value === 'Custom') {
+          ensureEqPresets().preset = 'Custom';
+          persistEqPresets();
+          return;
+        }
+        applyEqPreset(select.value);
+      });
+      this.controls.eqPreset = {
+        input: select,
+        set: function (v) { select.value = v; }
+      };
+      const managerB = this.btn('Preset Manager', 'Create, edit, and delete equalizer presets');
+      managerB.addEventListener('click', () => this.openModal('eqPresetManager'));
+      m.body.appendChild(this.h('div', { class: 'uae-eq-presets' }, [select, managerB]));
+
       const grid = this.h('div', { class: 'uae-eq-grid' });
       this.controls.eq = [];
       for (let i = 0; i < EQ_BANDS.length; i++) {
@@ -2716,10 +2882,12 @@
           const v = parseFloat(input.value);
           val.textContent = UI.fmt.db(v);
           settings.equalizer[idx] = v;
+          this.afterEqChanged();
           markCustom(); applyAll(); persistSettings();
         });
         input.addEventListener('change', () => {
           settings.equalizer[idx] = parseFloat(input.value);
+          this.afterEqChanged();
           persistSettingsNow();
         });
         col.appendChild(val);
@@ -2732,6 +2900,7 @@
       const flat = this.btn('Flat', 'Reset all bands to 0 dB');
       flat.addEventListener('click', () => {
         settings.equalizer = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        this.afterEqChanged();
         markCustom();
         if (AutoEq.active || AutoEq.selected || AutoEq.cached) AutoEq.unload();
         else applyAll();
@@ -2741,6 +2910,198 @@
       const btns = this.h('div', { class: 'uae-btn-row' }, [flat]);
       m.body.appendChild(btns);
       m.body.appendChild(this.h('div', { class: 'uae-hint', text: '10-band graphic equalizer, \u221215\u2026+15 dB per band.' }));
+      this.renderEqPresetOptions();
+    },
+
+    afterEqChanged: function () {
+      const st = ensureEqPresets();
+      const name = this.selectedEqPresetName();
+      if (name) {
+        st.userPresets[name].equalizer = sanitizeEq(settings.equalizer, defaultSettings().equalizer).slice();
+        st.userPresets[name].name = name;
+      } else {
+        st.preset = 'Custom';
+        if (this.controls.eqPreset) this.controls.eqPreset.set('Custom');
+      }
+      persistEqPresets();
+      this.renderEqPresetManager();
+    },
+
+    currentEqPresetData: function () {
+      return {
+        name: ensureEqPresets().preset || 'Custom',
+        equalizer: sanitizeEq(settings.equalizer, defaultSettings().equalizer).slice()
+      };
+    },
+
+    renderEqPresetOptions: function () {
+      const c = this.controls.eqPreset;
+      if (!c || !c.input) return;
+      const select = c.input;
+      const st = ensureEqPresets();
+      select.textContent = '';
+      select.appendChild(this.h('option', { value: 'Custom', text: 'Custom' }));
+      const users = st.userPresets || {};
+      for (const name in users) select.appendChild(this.h('option', { value: name, text: name }));
+      select.value = st.preset || 'Custom';
+      this.renderEqPresetManager();
+    },
+
+    selectedEqPresetName: function () {
+      const st = ensureEqPresets();
+      const name = st.preset;
+      return name && st.userPresets && st.userPresets[name] ? name : '';
+    },
+
+    buildEqPresetManagerModal: function () {
+      const m = this.modalEls.eqPresetManager;
+      const nameInput = this.h('input', { class: 'uae-input', type: 'text', placeholder: 'Preset name', maxlength: 80 });
+      const createB = this.btn('Create', 'Create a preset from the current equalizer');
+      const error = this.h('div', { class: 'uae-preset-manager-error' });
+      const create = () => {
+        const msg = this.createEqPresetFromManager(nameInput.value);
+        if (msg) {
+          error.classList.remove('ok');
+          error.textContent = msg;
+          return;
+        }
+        nameInput.value = '';
+        error.classList.add('ok');
+        error.textContent = 'Preset saved.';
+      };
+      createB.addEventListener('click', create);
+      nameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') create();
+      });
+      this.controls.eqPresetName = nameInput;
+      this.els.eqPresetError = error;
+      this.els.eqPresetList = this.h('div', { class: 'uae-preset-list' });
+      m.body.appendChild(this.h('div', { class: 'uae-preset-manager-top' }, [nameInput, createB]));
+      m.body.appendChild(error);
+      m.body.appendChild(this.els.eqPresetList);
+      m.body.appendChild(this.h('div', { class: 'uae-hint', text: 'Selecting a preset from the Equalizer dropdown loads it. Edits to EQ sliders are saved automatically to the selected preset.' }));
+      this.renderEqPresetManager();
+      setTimeout(() => nameInput.focus(), 0);
+    },
+
+    createEqPresetFromManager: function (name) {
+      const st = ensureEqPresets();
+      const clean = String(name || '').trim().slice(0, 80);
+      if (!clean) return 'Enter a preset name.';
+      if (st.userPresets[clean]) return 'A preset with this name already exists.';
+      st.userPresets[clean] = {
+        name: clean,
+        equalizer: sanitizeEq(settings.equalizer, defaultSettings().equalizer).slice()
+      };
+      st.preset = clean;
+      persistEqPresets();
+      persistSettingsNow();
+      this.renderEqPresetOptions();
+      this.renderEqPresetManager();
+      if (this.controls.eqPreset) this.controls.eqPreset.set(clean);
+      return '';
+    },
+
+    renderEqPresetManager: function () {
+      const list = this.els.eqPresetList;
+      if (!list) return;
+      const st = ensureEqPresets();
+      const users = st.userPresets || {};
+      list.textContent = '';
+      const names = Object.keys(users);
+      if (!names.length) {
+        list.appendChild(this.h('div', { class: 'uae-list-empty', text: 'No equalizer presets saved.' }));
+        return;
+      }
+      for (const name of names) {
+        const item = this.h('div', { class: 'uae-preset-item' + (st.preset === name ? ' active' : '') });
+        const loadB = this.btn('Load', 'Load this preset');
+        const editB = this.btn('Edit', 'Rename this preset');
+        const deleteB = this.btn('Delete', 'Delete this preset');
+        deleteB.className += ' danger';
+        loadB.addEventListener('click', () => applyEqPreset(name));
+        editB.addEventListener('click', () => this.renameEqPreset(name));
+        deleteB.addEventListener('click', () => this.deleteEqPreset(name));
+        item.appendChild(this.h('span', { class: 'uae-preset-name', text: name }));
+        item.appendChild(loadB);
+        item.appendChild(editB);
+        item.appendChild(deleteB);
+        list.appendChild(item);
+      }
+    },
+
+    saveEqPreset: function (directName) {
+      const st = ensureEqPresets();
+      const current = st.preset && st.preset !== 'Custom' ? st.preset : '';
+      if (typeof directName === 'string') {
+        const clean = directName.trim().slice(0, 80);
+        if (!clean) return 'Enter a preset name.';
+        if (st.userPresets[clean] && clean !== current) return 'A preset with this name already exists.';
+        st.userPresets[clean] = this.currentEqPresetData();
+        st.userPresets[clean].name = clean;
+        st.preset = clean;
+        persistEqPresets();
+        persistSettingsNow();
+        this.renderEqPresetOptions();
+        this.renderEqPresetManager();
+        this.syncEq();
+        return '';
+      }
+      this.textDialog('Save Equalizer Preset', current, 'Save', (name) => {
+        const clean = name ? String(name).trim().slice(0, 80) : '';
+        if (!clean) return 'Enter a preset name.';
+        if (st.userPresets[clean] && clean !== current) return 'A preset with this name already exists.';
+        st.userPresets[clean] = this.currentEqPresetData();
+        st.userPresets[clean].name = clean;
+        st.preset = clean;
+        persistEqPresets();
+        persistSettingsNow();
+        this.renderEqPresetOptions();
+        this.renderEqPresetManager();
+        this.syncEq();
+        return '';
+      });
+    },
+
+    renameEqPreset: function (presetName) {
+      const st = ensureEqPresets();
+      const oldName = presetName || this.selectedEqPresetName();
+      if (!oldName) {
+        this.confirmDialog('Rename Equalizer Preset', 'Select a saved preset first.', 'OK', function () {});
+        return;
+      }
+      this.textDialog('Rename Equalizer Preset', oldName, 'Rename', (name) => {
+        const clean = name ? String(name).trim().slice(0, 80) : '';
+        if (!clean) return 'Enter a preset name.';
+        if (clean === oldName) return '';
+        if (st.userPresets[clean]) return 'A preset with this name already exists.';
+        st.userPresets[clean] = st.userPresets[oldName];
+        st.userPresets[clean].name = clean;
+        delete st.userPresets[oldName];
+        st.preset = clean;
+        persistEqPresets();
+        persistSettingsNow();
+        this.renderEqPresetOptions();
+        this.renderEqPresetManager();
+        return '';
+      });
+    },
+
+    deleteEqPreset: function (presetName) {
+      const st = ensureEqPresets();
+      const name = presetName || this.selectedEqPresetName();
+      if (!name) {
+        this.confirmDialog('Delete Equalizer Preset', 'Select a saved preset first.', 'OK', function () {});
+        return;
+      }
+      this.confirmDialog('Delete Equalizer Preset', 'Delete preset "' + name + '"?', 'Delete', () => {
+        delete st.userPresets[name];
+        st.preset = 'Custom';
+        persistEqPresets();
+        persistSettingsNow();
+        this.renderEqPresetOptions();
+        this.renderEqPresetManager();
+      });
     },
 
     syncEq: function () {
@@ -2749,6 +3110,7 @@
         this.controls.eq[i].input.value = settings.equalizer[i];
         this.controls.eq[i].val.textContent = this.fmt.db(settings.equalizer[i]);
       }
+      this.renderEqPresetOptions();
     },
 
     buildAutoEqModal: function () {
@@ -3068,11 +3430,12 @@
 
     currentEffectPresetData: function () {
       const st = sanitizeEffectsState(settings.effects);
+      const presetSettings = sanitizeSettings(Object.assign({}, settings, { effects: defaultEffectsState() }));
       return {
         name: st.preset || 'Custom',
         order: st.order.slice(),
         effects: JSON.parse(JSON.stringify(st.effects)),
-        settings: sanitizeSettings(Object.assign({}, settings, { effects: defaultEffectsState() }))
+        settings: presetSettings
       };
     },
 
@@ -3245,11 +3608,14 @@
           try { data = JSON.parse(String(reader.result)); } catch (e) { alert('Invalid JSON file.'); return; }
           if (!data || typeof data !== 'object') { alert('Invalid effects preset.'); return; }
           const name = String(data.name || file.name.replace(/\.json$/i, '') || 'Imported Preset').trim().slice(0, 80);
+          const presetSettings = data.settings && typeof data.settings === 'object'
+            ? sanitizeSettings(Object.assign({}, data.settings, { effects: defaultEffectsState() }))
+            : null;
           const preset = {
             name: name,
             order: sanitizeEffectOrder(data.order),
             effects: sanitizeEffectsState({ effects: data.effects }).effects,
-            settings: data.settings && typeof data.settings === 'object' ? sanitizeSettings(Object.assign({}, data.settings, { effects: defaultEffectsState() })) : null
+            settings: presetSettings
           };
           settings.effects.userPresets[name] = preset;
           settings.effects.preset = name;
@@ -3281,6 +3647,10 @@
       if (c.limiterAttack) c.limiterAttack.set(settings.limiterAttack);
       if (c.limiterCeiling) c.limiterCeiling.set(settings.limiterCeiling);
       if (c.limiterLookahead) c.limiterLookahead.set(settings.limiterLookahead);
+      if (c.eqPreset) {
+        this.renderEqPresetOptions();
+        c.eqPreset.set((eqPresetState && eqPresetState.preset) || 'Custom');
+      }
       if (c.eq) this.syncEq();
       if (c.hpf && c.hpfFreq) { c.hpf.set(settings.highPass); c.hpfFreq.disable(!settings.highPass); c.hpfFreq.set(settings.highPassFreq); }
       if (c.lpf && c.lpfFreq) { c.lpf.set(settings.lowPass); c.lpfFreq.disable(!settings.lowPass); c.lpfFreq.set(settings.lowPassFreq); }
@@ -3310,6 +3680,8 @@
           el === this.els.siteBlockBtn ||
           el.id === 'uae-collapse' ||
           (el.classList && el.classList.contains('uae-modal-close')) ||
+          !!(el.closest && el.closest('.uae-modal-equalizer')) ||
+          !!(el.closest && el.closest('.uae-modal-eqPresetManager')) ||
           !!(el.closest && el.closest('.uae-modal-blockedSites'));
         el.disabled = blocked && !allowed;
       }
