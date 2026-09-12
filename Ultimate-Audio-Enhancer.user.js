@@ -3,7 +3,7 @@
 // @name:de      Ultimate Audio Enhancer (Echtzeit-Audio-Verbesserung)
 // @namespace    https://github.com/nextscript
 // @author       Freak288
-// @version      1.0.3
+// @version      1.0.4
 // @description  Real-time audio enhancement for HTML5 video and audio
 // @description:de Echtzeit-Audio-Verbesserung für HTML5-Video und Audio
 // @match        *://*/*
@@ -25,7 +25,7 @@
   // ============================================================================
   // 1. Configuration
   // ============================================================================
-  const VERSION = '1.0.3';
+  const VERSION = '1.0.4';
   const AUTOEQ_BASE = 'https://raw.githubusercontent.com/nextscript/AutoEq/master/results/';
   const AUTOEQ_INDEX_URL = AUTOEQ_BASE + 'INDEX.md';
   const EXPORT_FILENAME = 'ultimate-audio-enhancer-config.json';
@@ -187,7 +187,8 @@
     ui: 'uae_ui',
     autoeqIndex: 'uae_autoeq_index',
     autoeqSelected: 'uae_autoeq_selected',
-    autoeqCache: 'uae_autoeq_cache'
+    autoeqCache: 'uae_autoeq_cache',
+    blockedSites: 'uae_blocked_sites'
   };
 
   // ============================================================================
@@ -423,6 +424,7 @@
   let settings = sanitizeSettings(Storage.get(KEYS.settings, null)) || defaultSettings();
   let uiState = Storage.get(KEYS.ui, null) || {};
   if (typeof uiState !== 'object' || uiState === null) uiState = {};
+  let blockedSites = sanitizeBlockedSites(Storage.get(KEYS.blockedSites, null));
 
   let persistTimer = null;
   function persistSettings() {
@@ -435,9 +437,45 @@
     Storage.set(KEYS.settings, settings);
   }
   function persistUI() { Storage.set(KEYS.ui, uiState); }
+  function persistBlockedSites() { Storage.set(KEYS.blockedSites, blockedSites); }
   function flushPendingSettings() {
     if (!persistTimer) return;
     persistSettingsNow();
+  }
+
+  function sanitizeBlockedSites(value) {
+    const seen = {};
+    const out = [];
+    if (!Array.isArray(value)) return out;
+    for (let i = 0; i < value.length; i++) {
+      const host = String(value[i] || '').trim().toLowerCase().replace(/^\.+|\.+$/g, '');
+      if (!host || seen[host]) continue;
+      seen[host] = true;
+      out.push(host.slice(0, 253));
+    }
+    return out;
+  }
+
+  function currentSiteKey() {
+    try { return window.location.hostname.toLowerCase().replace(/^\.+|\.+$/g, ''); } catch (_) { return ''; }
+  }
+
+  function isHostBlocked(host) {
+    host = String(host || '').toLowerCase().replace(/^\.+|\.+$/g, '');
+    if (!host) return false;
+    for (let i = 0; i < blockedSites.length; i++) {
+      const blocked = blockedSites[i];
+      if (host === blocked || host.endsWith('.' + blocked)) return true;
+    }
+    return false;
+  }
+
+  function isCurrentSiteBlocked() {
+    return isHostBlocked(currentSiteKey());
+  }
+
+  function engineActiveForPage() {
+    return settings.enabled && !isCurrentSiteBlocked();
   }
 
   // ============================================================================
@@ -1340,16 +1378,66 @@
   const sources = new WeakMap(); // element -> { source }
   const routedMedia = [];
 
+  function mediaSrcUrl(el) {
+    if (!el) return '';
+    if (el.currentSrc) return el.currentSrc;
+    if (el.src) return el.src;
+    try {
+      const source = el.querySelector && el.querySelector('source[src]');
+      return source && source.src ? source.src : '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function canRouteMediaThroughWebAudio(el) {
+    if (el.srcObject) return { ok: true };
+    const raw = mediaSrcUrl(el);
+    if (!raw) return { ok: false, defer: true };
+    try {
+      const url = new URL(raw, document.baseURI);
+      if (url.protocol === 'data:' || url.protocol === 'blob:' || url.protocol === 'file:') return { ok: true };
+      if (url.origin === window.location.origin) return { ok: true };
+      if (el.crossOrigin) return { ok: true };
+      return { ok: false, crossOrigin: true, url: url.href };
+    } catch (_) {
+      return { ok: false, defer: true };
+    }
+  }
+
+  function deferMediaRegistration(el) {
+    if (el.__uae_waitingForSource) return;
+    el.__uae_waitingForSource = true;
+    const retry = function () {
+    if (!engineActiveForPage() || el.__uae_source || el.__uae_failed) return;
+      registerMedia(el);
+    };
+    el.addEventListener('loadstart', retry, true);
+    el.addEventListener('loadedmetadata', retry, true);
+    el.addEventListener('canplay', retry, true);
+    el.addEventListener('durationchange', retry, true);
+    el.addEventListener('emptied', retry, true);
+  }
+
   function registerMedia(el) {
     if (!el || el.nodeType !== 1) return;
     const tag = el.tagName ? el.tagName.toLowerCase() : '';
     if (tag !== 'video' && tag !== 'audio') return;
     if (el.__uae_failed) return;
-    if (!settings.enabled) return; // engine off: leave element untouched
+    if (!engineActiveForPage()) return; // engine off or site-blocked: leave element untouched
 
     if (el.__uae_source) {
       // element re-attached after removal (SPA)
       if (Engine.nodes) { try { el.__uae_source.connect(Engine.nodes.input); } catch (_) {} }
+      return;
+    }
+    const routeCheck = canRouteMediaThroughWebAudio(el);
+    if (!routeCheck.ok) {
+      if (routeCheck.defer) deferMediaRegistration(el);
+      else if (routeCheck.crossOrigin && !el.__uae_crossOriginSkipped) {
+        el.__uae_crossOriginSkipped = true;
+        console.warn('[UAE] Cross-origin media without CORS left untouched to preserve native audio:', routeCheck.url);
+      }
       return;
     }
     Engine.ensure();
@@ -1371,7 +1459,7 @@
     if (Engine.nodes) Engine.applyPitchPlayback(settings.effects.effects.pitch);
     // resume the context on playback (autoplay elements may lack a page gesture)
     el.addEventListener('playing', function () {
-      if (settings.enabled && Engine.ctx && Engine.ctx.state === 'suspended') {
+      if (engineActiveForPage() && Engine.ctx && Engine.ctx.state === 'suspended') {
         try { Engine.ctx.resume().catch(function () {}); } catch (_) {}
       }
     });
@@ -1402,6 +1490,15 @@
       if (els.length) {
         const mo = new MutationObserver(function (muts) {
           for (const m of muts) {
+            if (m.type === 'attributes') {
+              const target = m.target;
+              if (target && target.nodeType === 1) {
+                const tag = target.tagName ? target.tagName.toLowerCase() : '';
+                if (tag === 'video' || tag === 'audio') registerMedia(target);
+                else if (tag === 'source' && target.parentNode) registerMedia(target.parentNode);
+              }
+              continue;
+            }
             for (const n of m.addedNodes) if (n.nodeType === 1) {
               if (n.tagName && (n.tagName.toLowerCase() === 'video' || n.tagName.toLowerCase() === 'audio')) registerMedia(n);
               if (n.querySelector) {
@@ -1411,7 +1508,7 @@
             }
           }
         });
-        mo.observe(root, { childList: true, subtree: true });
+        mo.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'crossorigin'] });
       }
     } catch (_) {}
   }
@@ -1425,6 +1522,15 @@
 
   const mediaObserver = new MutationObserver(function (muts) {
     for (const m of muts) {
+      if (m.type === 'attributes') {
+        const target = m.target;
+        if (target && target.nodeType === 1) {
+          const tag = target.tagName ? target.tagName.toLowerCase() : '';
+          if (tag === 'video' || tag === 'audio') registerMedia(target);
+          else if (tag === 'source' && target.parentNode) registerMedia(target.parentNode);
+        }
+        continue;
+      }
       for (const n of m.addedNodes) {
         if (n.nodeType !== 1) continue;
         const tag = n.tagName ? n.tagName.toLowerCase() : '';
@@ -1442,7 +1548,7 @@
     try {
       const root = document.documentElement || document.body;
       if (root && !mediaObserver._started) {
-        mediaObserver.observe(root, { childList: true, subtree: true });
+        mediaObserver.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'crossorigin'] });
         mediaObserver._started = true;
       }
       scanDocument();
@@ -1557,7 +1663,7 @@
   }
 
   function applyAll() {
-    if (settings.enabled) {
+    if (engineActiveForPage()) {
       Engine.ensure();
       scanDocument();
       Engine.apply(settings);
@@ -1860,6 +1966,8 @@
 
 .uae-enable-row { display: flex; align-items: center; justify-content: space-between; }
 .uae-enable-row label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 600; }
+.uae-enable-actions { display: flex; align-items: center; gap: 8px; }
+.uae-site-block-btn.active { border-color: #f87171; color: #f87171; background: #2a171c; }
 .uae-switch { appearance: none; -webkit-appearance: none; width: 36px; height: 20px; border-radius: 10px; background: #2e2e3a; position: relative; cursor: pointer; transition: background .15s; outline: none; }
 .uae-switch:checked { background: #4ade80; }
 .uae-switch:after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: left .15s; }
@@ -1927,6 +2035,15 @@
 .uae-list-item .uae-li-src { font-size: 12px; color: #6b7280; }
 .uae-list-item.active { background: #1a2530; }
 .uae-list-item.active .uae-li-name { color: #4ade80; }
+.uae-list-empty { padding: 10px; color: #6b7280; font-size: 13px; }
+.uae-site-list { margin-top: 10px; }
+.uae-site-list .uae-btn { flex: 0 0 auto; padding: 4px 8px; }
+#uae-root.uae-site-blocked #uae-panel-body .uae-section:not(:first-child) { opacity: .55; }
+#uae-root.uae-site-blocked #uae-panel-body .uae-enable-row label { opacity: .55; }
+#uae-root.uae-site-blocked .uae-modal:not(.uae-modal-blockedSites) .uae-modal-body { opacity: .55; }
+#uae-root.uae-site-blocked input:disabled,
+#uae-root.uae-site-blocked select:disabled,
+#uae-root.uae-site-blocked button:disabled { cursor: not-allowed; opacity: .55; }
 
 .uae-modal-effects { width: 560px; }
 .uae-effects-top { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; margin-bottom: 10px; }
@@ -2052,6 +2169,7 @@
       this.buildModal('limiter', 'Limiter', '', () => this.buildLimiterModal());
       this.buildModal('filters', 'Filters', 'F', () => this.buildFiltersModal());
       this.buildModal('effects', 'Effects', 'S', () => this.buildEffectsModal());
+      this.buildModal('blockedSites', 'Blocked Sites', '', () => this.buildBlockedSitesModal());
 
       this.syncUI();
       this.updateStatus();
@@ -2092,7 +2210,14 @@
               S.controls.enabled = { set: function (v) { sw.checked = v; } };
               return sw;
             })()
-          ])
+          ]),
+          (function () {
+            const b = S.btn('\u2298', 'Disable Ultimate Audio Enhancer on this site');
+            b.className += ' uae-icon-btn uae-site-block-btn';
+            b.addEventListener('click', () => S.openModal('blockedSites'));
+            S.els.siteBlockBtn = b;
+            return b;
+          })()
         ])
       ]);
       body.appendChild(enable);
@@ -2254,7 +2379,7 @@
     },
 
     defaultModalPosition: function (name) {
-      const widths = { equalizer: 620, autoeq: 420, limiter: 420, filters: 420, effects: 560 };
+      const widths = { equalizer: 620, autoeq: 420, limiter: 420, filters: 420, effects: 560, blockedSites: 420 };
       const w = widths[name] || 420;
       const offset = Object.keys(this.modalEls).indexOf(name);
       return {
@@ -2502,6 +2627,52 @@
       body.appendChild(lpf.row);
       body.appendChild(lpfFreq.row);
       body.appendChild(this.h('div', { class: 'uae-hint', text: 'HPF removes low-frequency rumble (20\u2013500 Hz). LPF rolls off highs (1\u201320 kHz) for a warmer sound.' }));
+    },
+
+    buildBlockedSitesModal: function () {
+      const m = this.modalEls.blockedSites;
+      const body = m.body;
+      const host = currentSiteKey();
+      const addBtn = this.btn('Add Current Site', host ? 'Disable UAE on ' + host : 'Disable UAE on current site');
+      addBtn.className += ' primary';
+      addBtn.addEventListener('click', () => {
+        addBlockedSite(host);
+        this.renderBlockedSitesList();
+      });
+      this.els.blockedSitesCurrent = this.h('div', { class: 'uae-statusline' });
+      this.els.blockedSitesList = this.h('div', { class: 'uae-list uae-site-list' });
+      body.appendChild(this.els.blockedSitesCurrent);
+      body.appendChild(addBtn);
+      body.appendChild(this.els.blockedSitesList);
+      body.appendChild(this.h('div', { class: 'uae-hint', text: 'Blocked sites keep the UAE UI available, but new media stays untouched and audio processing is bypassed on that domain.' }));
+      this.renderBlockedSitesList();
+    },
+
+    renderBlockedSitesList: function () {
+      const current = currentSiteKey();
+      const currentLine = this.els.blockedSitesCurrent;
+      if (currentLine) {
+        currentLine.textContent = current ? 'Current site: ' + current : 'Current site unavailable.';
+      }
+      const list = this.els.blockedSitesList;
+      if (!list) return;
+      list.textContent = '';
+      if (!blockedSites.length) {
+        list.appendChild(this.h('div', { class: 'uae-list-empty', text: 'No blocked sites.' }));
+        return;
+      }
+      for (let i = 0; i < blockedSites.length; i++) {
+        const host = blockedSites[i];
+        const active = isHostBlocked(current) && (current === host || current.endsWith('.' + host));
+        const item = this.h('div', { class: 'uae-list-item' + (active ? ' active' : '') }, [
+          this.h('span', { class: 'uae-li-name', text: host })
+        ]);
+        const remove = this.btn('Remove', 'Allow UAE on ' + host);
+        remove.className += ' danger';
+        remove.addEventListener('click', () => removeBlockedSite(host));
+        item.appendChild(remove);
+        list.appendChild(item);
+      }
     },
 
     effectFmt: function (kind) {
@@ -2777,6 +2948,29 @@
         c.effectPreset.set(settings.effects.preset || 'Custom');
       }
       if (this.els.effectList) this.renderEffectsList();
+      if (this.els.siteBlockBtn) {
+        const blocked = isCurrentSiteBlocked();
+        this.els.siteBlockBtn.classList.toggle('active', blocked);
+        this.els.siteBlockBtn.title = blocked ? 'Ultimate Audio Enhancer is disabled on this site' : 'Disable Ultimate Audio Enhancer on this site';
+      }
+      if (this.els.blockedSitesList) this.renderBlockedSitesList();
+      this.updateSiteBlockedUi();
+    },
+
+    updateSiteBlockedUi: function () {
+      const blocked = isCurrentSiteBlocked();
+      if (this.els.root) this.els.root.classList.toggle('uae-site-blocked', blocked);
+      if (!this.els.root) return;
+      const controls = this.els.root.querySelectorAll('input, select, textarea, button');
+      for (let i = 0; i < controls.length; i++) {
+        const el = controls[i];
+        const allowed =
+          el === this.els.siteBlockBtn ||
+          el.id === 'uae-collapse' ||
+          (el.classList && el.classList.contains('uae-modal-close')) ||
+          !!(el.closest && el.closest('.uae-modal-blockedSites'));
+        el.disabled = blocked && !allowed;
+      }
     },
 
     updateStatus: function () {
@@ -2784,7 +2978,8 @@
       const suspended = Engine.ctx && Engine.ctx.state === 'suspended';
       let cls = '';
       let text = 'Standby';
-      if (settings.enabled && running) { cls = 'on'; text = 'Active'; }
+      if (isCurrentSiteBlocked()) { cls = ''; text = 'Site Off'; }
+      else if (settings.enabled && running) { cls = 'on'; text = 'Active'; }
       else if (suspended) { cls = 'susp'; text = 'Suspended'; }
       else if (running) { cls = ''; text = 'Off'; }
       else { cls = ''; text = 'Standby'; }
@@ -2817,6 +3012,10 @@
         if (!(e.ctrlKey && e.shiftKey) || e.altKey || e.metaKey) return;
         const k = (e.key || '').toLowerCase();
         let handled = true;
+        if (isCurrentSiteBlocked() && k !== 'a') {
+          e.preventDefault();
+          return;
+        }
         switch (k) {
           case 'a': UI.togglePanel(); break;
           case 'e': UI.openModal('equalizer'); break;
@@ -2928,13 +3127,32 @@
 
   function setEnabled(v) {
     settings.enabled = v;
-    if (v) {
+    if (engineActiveForPage()) {
       Engine.ensure();
-    } else {
+    } else if (!v) {
       Engine.setAutoEq(null);
     }
     applyAll();
     UI.syncUI();
+  }
+
+  function addBlockedSite(host) {
+    host = String(host || '').trim().toLowerCase().replace(/^\.+|\.+$/g, '');
+    if (!host) return;
+    blockedSites = sanitizeBlockedSites(blockedSites.concat([host]));
+    persistBlockedSites();
+    applyAll();
+    UI.syncUI();
+    UI.updateStatus();
+  }
+
+  function removeBlockedSite(host) {
+    host = String(host || '').trim().toLowerCase().replace(/^\.+|\.+$/g, '');
+    blockedSites = blockedSites.filter(function (entry) { return entry !== host; });
+    persistBlockedSites();
+    applyAll();
+    UI.syncUI();
+    UI.updateStatus();
   }
 
   // ============================================================================
