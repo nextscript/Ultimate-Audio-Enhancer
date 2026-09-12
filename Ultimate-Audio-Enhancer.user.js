@@ -3,7 +3,7 @@
 // @name:de      Ultimate Audio Enhancer (Echtzeit-Audio-Verbesserung)
 // @namespace    https://github.com/nextscript
 // @author       Freak288
-// @version      1.0.6
+// @version      1.0.7
 // @description  Real-time audio enhancement for HTML5 video and audio
 // @description:de Echtzeit-Audio-Verbesserung für HTML5-Video und Audio
 // @match        *://*/*
@@ -25,7 +25,7 @@
   // ============================================================================
   // 1. Configuration
   // ============================================================================
-  const VERSION = '1.0.6';
+  const VERSION = '1.0.7';
   const AUTOEQ_BASE = 'https://raw.githubusercontent.com/nextscript/AutoEq/master/results/';
   const AUTOEQ_INDEX_URL = AUTOEQ_BASE + 'INDEX.md';
   const EXPORT_FILENAME = 'ultimate-audio-enhancer-config.json';
@@ -813,6 +813,10 @@
       const ctx = this.ctx;
       const N = {};
       N.input = ctx.createGain();
+      N.processedIn = ctx.createGain();
+      N.siteBypass = ctx.createGain();
+      N.processedIn.gain.value = 1;
+      N.siteBypass.gain.value = 1;
       N.volume = ctx.createGain();
       N.autoeqIn = ctx.createGain();
       this.autoeqFilters = [];
@@ -883,7 +887,9 @@
       N.anR = ctx.createAnalyser(); N.anR.fftSize = 256;
 
       // Wiring
-      N.input.connect(N.volume);
+      N.input.connect(N.processedIn);
+      N.input.connect(N.siteBypass);
+      N.processedIn.connect(N.volume);
       N.volume.connect(N.hp);
       N.hp.connect(N.lp);
       N.lp.connect(N.noiseReduction.input);
@@ -937,6 +943,8 @@
       N.limCeiling.connect(N.out);
       N.out.connect(N.anMain);
       N.anMain.connect(ctx.destination);
+      N.siteBypassConnected = false;
+      N.processedOutputConnected = true;
 
       // Bypass states (default: compressor OFF, limiter ON)
       N.compIn.connect(N.limIn);
@@ -1783,6 +1791,40 @@
     if (el.shadowRoot) scanShadow(el.shadowRoot);
   }
 
+  function setRoutedMediaSiteBypass(bypass, immediate) {
+    const N = Engine.nodes;
+    if (!N || !N.processedIn || !N.siteBypass) return;
+    if (bypass) {
+      if (!N.siteBypassConnected) {
+        try { N.siteBypass.connect(Engine.ctx.destination); N.siteBypassConnected = true; } catch (_) {}
+      }
+      if (N.processedOutputConnected) {
+        try { N.anMain.disconnect(); } catch (_) {}
+        N.processedOutputConnected = false;
+      }
+    } else {
+      if (!N.processedOutputConnected) {
+        try { N.anMain.connect(Engine.ctx.destination); N.processedOutputConnected = true; } catch (_) {}
+      }
+      if (N.siteBypassConnected) {
+        try { N.siteBypass.disconnect(); } catch (_) {}
+        N.siteBypassConnected = false;
+      }
+    }
+    if (immediate && Engine.ctx) {
+      const t = Engine.ctx.currentTime;
+      try {
+        N.processedIn.gain.cancelScheduledValues(t);
+        N.siteBypass.gain.cancelScheduledValues(t);
+        N.processedIn.gain.setValueAtTime(bypass ? 0 : 1, t);
+        N.siteBypass.gain.setValueAtTime(bypass ? 1 : 0, t);
+        return;
+      } catch (_) {}
+    }
+    Engine.ramp(N.processedIn.gain, bypass ? 0 : 1, DB_TIME_CONSTANT);
+    Engine.ramp(N.siteBypass.gain, bypass ? 1 : 0, DB_TIME_CONSTANT);
+  }
+
   function scanShadow(root) {
     try {
       const els = root.querySelectorAll('video,audio');
@@ -1996,10 +2038,12 @@
   function applyAll() {
     if (engineActiveForPage()) {
       Engine.ensure();
+      setRoutedMediaSiteBypass(false);
       scanDocument();
       Engine.apply(settings);
     } else if (Engine.ctx) {
       Engine.setAutoEq(null);
+      setRoutedMediaSiteBypass(isCurrentSiteBlocked());
       Engine.apply(neutralSettings());
     }
     UI.updateStatus();
@@ -2395,7 +2439,7 @@
 .uae-modal-head .uae-kbd { font-size: 12px; color: #6b7280; margin-right: 8px; }
 .uae-modal-close { background: none; border: none; color: #9ca3af; font-size: 20px; cursor: pointer; line-height: 1; padding: 0 2px; }
 .uae-modal-close:hover { color: #fff; }
-.uae-modal-body { padding: 14px; overflow-y: auto; max-height: calc(100vh - 130px); }
+.uae-modal-body { flex: 1 1 auto; min-height: 0; padding: 14px; overflow-y: auto; max-height: calc(100vh - 130px); }
 
 .uae-eq-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 10px; align-items: end; }
 .uae-eq-col { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
@@ -2447,7 +2491,8 @@
 .uae-list-item.active { background: #1a2530; }
 .uae-list-item.active .uae-li-name { color: #4ade80; }
 .uae-list-empty { padding: 10px; color: #6b7280; font-size: 13px; }
-.uae-site-list { margin-top: 10px; }
+.uae-modal-blockedSites .uae-modal-body { display: flex; flex-direction: column; }
+.uae-site-list { flex: 0 1 auto; min-height: 0; max-height: 400px; margin-top: 10px; overscroll-behavior: contain; }
 .uae-site-list .uae-btn { flex: 0 0 auto; padding: 4px 8px; }
 #uae-root.uae-site-blocked #uae-panel-body .uae-section:not(:first-child) { opacity: .55; }
 #uae-root.uae-site-blocked #uae-panel-body .uae-enable-row label { opacity: .55; }
@@ -3339,11 +3384,19 @@
       const addBtn = this.btn('Add Current Site', host ? 'Disable UAE on ' + host : 'Disable UAE on current site');
       addBtn.className += ' primary';
       addBtn.addEventListener('click', () => {
-        addBlockedSite(host);
+        addBlockedSite(currentSiteKey());
         this.renderBlockedSitesList();
       });
       this.els.blockedSitesCurrent = this.h('div', { class: 'uae-statusline' });
       this.els.blockedSitesList = this.h('div', { class: 'uae-list uae-site-list' });
+      this.els.blockedSitesList.addEventListener('wheel', (e) => {
+        const list = this.els.blockedSitesList;
+        if (!list) return;
+        const unit = e.deltaMode === 1 ? 16 : (e.deltaMode === 2 ? list.clientHeight : 1);
+        list.scrollTop += e.deltaY * unit;
+        e.preventDefault();
+        e.stopPropagation();
+      }, { passive: false });
       body.appendChild(this.els.blockedSitesCurrent);
       body.appendChild(addBtn);
       body.appendChild(this.els.blockedSitesList);
@@ -3853,17 +3906,30 @@
   function addBlockedSite(host) {
     host = String(host || '').trim().toLowerCase().replace(/^\.+|\.+$/g, '');
     if (!host) return;
+    const current = currentSiteKey();
+    const reloadAfterAdd = !isCurrentSiteBlocked() && current && (current === host || current.endsWith('.' + host));
     blockedSites = sanitizeBlockedSites(blockedSites.concat([host]));
     persistBlockedSites();
+    if (isCurrentSiteBlocked() && Engine.ctx) {
+      Engine.setAutoEq(null);
+      Engine.apply(neutralSettings());
+      setRoutedMediaSiteBypass(true, true);
+    }
     applyAll();
     UI.syncUI();
     UI.updateStatus();
+    if (reloadAfterAdd && isCurrentSiteBlocked()) {
+      setTimeout(function () {
+        try { window.location.reload(); } catch (_) {}
+      }, 120);
+    }
   }
 
   function removeBlockedSite(host) {
     host = String(host || '').trim().toLowerCase().replace(/^\.+|\.+$/g, '');
     blockedSites = blockedSites.filter(function (entry) { return entry !== host; });
     persistBlockedSites();
+    if (!isCurrentSiteBlocked()) setRoutedMediaSiteBypass(false, true);
     applyAll();
     UI.syncUI();
     UI.updateStatus();
