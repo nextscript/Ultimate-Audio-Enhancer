@@ -3,7 +3,7 @@
 // @name:de      Ultimate Audio Enhancer (Echtzeit-Audio-Verbesserung)
 // @namespace    https://github.com/nextscript
 // @author       Freak288
-// @version      1.0.4
+// @version      1.0.5
 // @description  Real-time audio enhancement for HTML5 video and audio
 // @description:de Echtzeit-Audio-Verbesserung für HTML5-Video und Audio
 // @match        *://*/*
@@ -25,7 +25,7 @@
   // ============================================================================
   // 1. Configuration
   // ============================================================================
-  const VERSION = '1.0.4';
+  const VERSION = '1.0.5';
   const AUTOEQ_BASE = 'https://raw.githubusercontent.com/nextscript/AutoEq/master/results/';
   const AUTOEQ_INDEX_URL = AUTOEQ_BASE + 'INDEX.md';
   const EXPORT_FILENAME = 'ultimate-audio-enhancer-config.json';
@@ -211,6 +211,15 @@
       highPassFreq: 80,
       lowPass: false,
       lowPassFreq: 16000,
+      noiseReduction: false,
+      noiseReductionAmount: 60,
+      noiseReductionThreshold: -48,
+      noiseReductionSmoothing: 65,
+      noiseReductionArtifactProtection: 75,
+      noiseReductionPreserveTransients: true,
+      adaptiveNoiseReduction: false,
+      adaptiveNoiseReductionAmount: 55,
+      adaptiveNoiseReductionFocus: 60,
       limiter: true,
       limiterThreshold: -1,
       limiterRelease: 100,
@@ -406,6 +415,15 @@
     out.highPassFreq = clampNum(s.highPassFreq, 20, 500); if (out.highPassFreq === null) out.highPassFreq = d.highPassFreq;
     out.lowPass = typeof s.lowPass === 'boolean' ? s.lowPass : d.lowPass;
     out.lowPassFreq = clampNum(s.lowPassFreq, 1000, 20000); if (out.lowPassFreq === null) out.lowPassFreq = d.lowPassFreq;
+    out.noiseReduction = typeof s.noiseReduction === 'boolean' ? s.noiseReduction : d.noiseReduction;
+    out.noiseReductionAmount = clampNum(s.noiseReductionAmount, 0, 100); if (out.noiseReductionAmount === null) out.noiseReductionAmount = d.noiseReductionAmount;
+    out.noiseReductionThreshold = clampNum(s.noiseReductionThreshold, -80, -20); if (out.noiseReductionThreshold === null) out.noiseReductionThreshold = d.noiseReductionThreshold;
+    out.noiseReductionSmoothing = clampNum(s.noiseReductionSmoothing, 0, 100); if (out.noiseReductionSmoothing === null) out.noiseReductionSmoothing = d.noiseReductionSmoothing;
+    out.noiseReductionArtifactProtection = clampNum(s.noiseReductionArtifactProtection, 0, 100); if (out.noiseReductionArtifactProtection === null) out.noiseReductionArtifactProtection = d.noiseReductionArtifactProtection;
+    out.noiseReductionPreserveTransients = typeof s.noiseReductionPreserveTransients === 'boolean' ? s.noiseReductionPreserveTransients : d.noiseReductionPreserveTransients;
+    out.adaptiveNoiseReduction = typeof s.adaptiveNoiseReduction === 'boolean' ? s.adaptiveNoiseReduction : d.adaptiveNoiseReduction;
+    out.adaptiveNoiseReductionAmount = clampNum(s.adaptiveNoiseReductionAmount, 0, 100); if (out.adaptiveNoiseReductionAmount === null) out.adaptiveNoiseReductionAmount = d.adaptiveNoiseReductionAmount;
+    out.adaptiveNoiseReductionFocus = clampNum(s.adaptiveNoiseReductionFocus, 0, 100); if (out.adaptiveNoiseReductionFocus === null) out.adaptiveNoiseReductionFocus = d.adaptiveNoiseReductionFocus;
     out.limiter = typeof s.limiter === 'boolean' ? s.limiter : d.limiter;
     out.limiterThreshold = clampNum(s.limiterThreshold, -20, 0); if (out.limiterThreshold === null) out.limiterThreshold = d.limiterThreshold;
     out.limiterRelease = clampNum(s.limiterRelease, 10, 1000); if (out.limiterRelease === null) out.limiterRelease = d.limiterRelease;
@@ -483,6 +501,144 @@
   // ============================================================================
   function db2gain(db) { return Math.pow(10, db / 20); }
 
+  class FilterBypass {
+    constructor(ctx, name, ramp) {
+      this.ctx = ctx;
+      this.name = name;
+      this.ramp = ramp;
+      this.input = ctx.createGain();
+      this.dry = ctx.createGain();
+      this.wet = ctx.createGain();
+      this.output = ctx.createGain();
+      this.processor = ctx.createGain();
+      this.ready = false;
+      this.loading = false;
+      this.failed = false;
+      this.message = '';
+      this.dry.gain.value = 1;
+      this.wet.gain.value = 0;
+      this.input.connect(this.dry);
+      this.dry.connect(this.output);
+      this.input.connect(this.processor);
+      this.processor.connect(this.wet);
+      this.wet.connect(this.output);
+    }
+
+    connectProcessor(node) {
+      if (!node) return false;
+      try {
+        this.input.disconnect(this.processor);
+        this.processor.disconnect(this.wet);
+      } catch (_) {}
+      this.processor = node;
+      this.input.connect(this.processor);
+      this.processor.connect(this.wet);
+      this.ready = true;
+      this.failed = false;
+      this.loading = false;
+      this.message = '';
+      return true;
+    }
+
+    setEnabled(enabled) {
+      const on = !!enabled && this.ready && !this.failed;
+      this.ramp(this.dry.gain, on ? 0 : 1);
+      this.ramp(this.wet.gain, on ? 1 : 0);
+    }
+
+    fail(message) {
+      this.failed = true;
+      this.loading = false;
+      this.message = message || 'Unavailable';
+      this.setEnabled(false);
+    }
+  }
+
+  class AudioFilterErrorHandler {
+    handle(filter, error) {
+      const message = error && error.message ? error.message : String(error || 'Unavailable');
+      console.warn('[UAE] ' + filter + ' unavailable:', message);
+    }
+  }
+
+  class NoiseReductionManager {
+    constructor(ctx, engine, errorHandler, name, label, processorKind) {
+      this.ctx = ctx;
+      this.engine = engine;
+      this.errorHandler = errorHandler;
+      this.name = name || 'noiseReduction';
+      this.label = label || 'Noise Reduction';
+      this.processorKind = processorKind || this.name;
+      this.bypass = new FilterBypass(ctx, this.name, function (param, value) {
+        engine.ramp(param, value, DB_TIME_CONSTANT);
+      });
+    }
+
+    async init() {
+      if (this.bypass.ready || this.bypass.loading || this.bypass.failed) return;
+      this.bypass.loading = true;
+      try {
+        this.bypass.connectProcessor(this.engine.createNativeFilterProcessor(this.processorKind));
+        this.bypass.message = this.label + ' active';
+      } catch (e) {
+        this.bypass.fail(this.label + ' bypassed');
+        this.errorHandler.handle(this.label, e);
+      }
+    }
+
+    async enable(settings) {
+      await this.init();
+      this.updateSettings(settings);
+      this.bypass.setEnabled(true);
+    }
+
+    disable(settings) {
+      this.updateSettings(settings);
+      this.bypass.setEnabled(false);
+    }
+
+    updateSettings(settings) {
+      this.engine.postNativeFilterSettings(this.name, settings);
+    }
+  }
+
+  class FilterManager {
+    constructor(ctx, engine) {
+      this.ctx = ctx;
+      this.engine = engine;
+      this.filters = {};
+      this.errorHandler = new AudioFilterErrorHandler();
+    }
+
+    registerFilter(name, filter) {
+      this.filters[name] = filter;
+      return filter;
+    }
+
+    enable(name, settings) {
+      const filter = this.filters[name];
+      if (filter && filter.enable) filter.enable(settings).catch((e) => this.errorHandler.handle(name, e));
+    }
+
+    disable(name, settings) {
+      const filter = this.filters[name];
+      if (filter && filter.disable) filter.disable(settings);
+    }
+
+    update(name, settings) {
+      const filter = this.filters[name];
+      if (filter && filter.updateSettings) filter.updateSettings(settings);
+    }
+
+    apply(settings) {
+      for (const name in this.filters) {
+        this.update(name, settings);
+        if (settings[name]) this.enable(name, settings);
+        else this.disable(name, settings);
+      }
+    }
+  }
+
   const Engine = {
     ctx: null,
     nodes: null,
@@ -523,6 +679,98 @@
       }
     },
 
+    createNativeFilterProcessor(kind) {
+      const ctx = this.ctx;
+      const node = ctx.createBiquadFilter();
+      node.__uaeNativeFilter = kind || 'noiseReduction';
+      if (kind === 'adaptiveNoiseReduction') {
+        node.type = 'highshelf';
+        node.frequency.value = 4800;
+        node.Q.value = 0.707;
+      } else {
+        node.type = 'highshelf';
+        node.frequency.value = 6200;
+        node.Q.value = 0.707;
+      }
+      node.gain.value = 0;
+      return node;
+    },
+
+    createFallbackDenoiseProcessor() {
+      return this.createNativeFilterProcessor('noiseReduction');
+    },
+
+    postFallbackDenoiseSettings(stage, enabled, strength, noiseFloor, smoothing, artifactProtection, preserveTransients) {
+      const st = stage && stage.processor && stage.processor.__uaeState;
+      const native = stage && stage.processor && (stage.processor.__uaeNativeDenoise || stage.processor.__uaeNativeFilter === 'noiseReduction');
+      if (native) {
+        const node = stage.processor;
+        const amount = Math.min(1, Math.max(0, strength / 100));
+        const targetGain = enabled ? -7 * amount : 0;
+        const targetFreq = 4200 + artifactProtection * 32;
+        this.ramp(node.frequency, targetFreq, PARAM_TIME_CONSTANT);
+        this.ramp(node.gain, targetGain, DB_TIME_CONSTANT);
+        return;
+      }
+      if (!st) return;
+      if (!!enabled && !st.wasEnabled) st.warmup = st.speechMode ? 8 : 12;
+      st.enabled = !!enabled;
+      st.wasEnabled = !!enabled;
+      st.strength = Math.min(1, Math.max(0, strength / 100));
+      st.noiseFloor = Math.min(-20, Math.max(-80, noiseFloor));
+      st.smoothing = Math.min(1, Math.max(0, smoothing / 100));
+      st.artifactProtection = Math.min(1, Math.max(0, artifactProtection / 100));
+      st.preserveTransients = !!preserveTransients;
+    },
+
+    postNativeFilterSettings(name, s) {
+      if (name === 'noiseReduction') {
+        this.postNoiseReductionSettings(s);
+        return;
+      }
+      const stage = this.nodes && this.nodes[name];
+      const node = stage && stage.processor;
+      if (!node || !node.__uaeNativeFilter) return;
+      if (name === 'adaptiveNoiseReduction') {
+        const amount = Math.min(1, Math.max(0, s.adaptiveNoiseReductionAmount / 100));
+        const focus = Math.min(1, Math.max(0, s.adaptiveNoiseReductionFocus / 100));
+        this.ramp(node.frequency, 2200 + focus * 5200, PARAM_TIME_CONSTANT);
+        this.ramp(node.Q, 0.707, PARAM_TIME_CONSTANT);
+        this.ramp(node.gain, s.adaptiveNoiseReduction ? -8 * amount : 0, DB_TIME_CONSTANT);
+      }
+    },
+
+    postNoiseReductionSettings(s) {
+      const stage = this.nodes && this.nodes.noiseReduction;
+      const port = stage && stage.processor && stage.processor.port;
+      if (port) {
+        port.postMessage({
+          type: 'updateSettings',
+          enabled: !!s.noiseReduction,
+          strength: Math.min(1, Math.max(0, s.noiseReductionAmount / 100)),
+          noiseFloor: s.noiseReductionThreshold,
+          smoothing: s.noiseReductionSmoothing / 100,
+          artifactProtection: s.noiseReductionArtifactProtection / 100,
+          preserveTransients: s.noiseReductionPreserveTransients
+        });
+      }
+      this.postFallbackDenoiseSettings(
+        stage,
+        s.noiseReduction,
+        s.noiseReductionAmount,
+        s.noiseReductionThreshold,
+        s.noiseReductionSmoothing,
+        s.noiseReductionArtifactProtection,
+        s.noiseReductionPreserveTransients
+      );
+    },
+
+    applyNoiseProcessors(s) {
+      const N = this.nodes;
+      if (!N) return;
+      if (N.filterManager) N.filterManager.apply(s);
+    },
+
     buildGraph() {
       const ctx = this.ctx;
       const N = {};
@@ -534,6 +782,17 @@
       N.autoeqOut = ctx.createGain();
       N.hp = ctx.createBiquadFilter(); N.hp.type = 'highpass';
       N.lp = ctx.createBiquadFilter(); N.lp.type = 'lowpass';
+      N.filterManager = new FilterManager(ctx, this);
+      N.noiseReductionManager = N.filterManager.registerFilter(
+        'noiseReduction',
+        new NoiseReductionManager(ctx, this, N.filterManager.errorHandler)
+      );
+      N.adaptiveNoiseReductionManager = N.filterManager.registerFilter(
+        'adaptiveNoiseReduction',
+        new NoiseReductionManager(ctx, this, N.filterManager.errorHandler, 'adaptiveNoiseReduction', 'Adaptive Noise Reduction', 'adaptiveNoiseReduction')
+      );
+      N.noiseReduction = N.noiseReductionManager.bypass;
+      N.adaptiveNoiseReduction = N.adaptiveNoiseReductionManager.bypass;
       N.eq = EQ_BANDS.map(function (f) {
         const b = ctx.createBiquadFilter();
         b.type = 'peaking';
@@ -587,11 +846,13 @@
 
       // Wiring
       N.input.connect(N.volume);
-      N.volume.connect(N.autoeqIn);
-      N.autoeqIn.connect(N.autoeqOut);
-      N.autoeqOut.connect(N.hp);
+      N.volume.connect(N.hp);
       N.hp.connect(N.lp);
-      N.lp.connect(N.eq[0]);
+      N.lp.connect(N.noiseReduction.input);
+      N.noiseReduction.output.connect(N.adaptiveNoiseReduction.input);
+      N.adaptiveNoiseReduction.output.connect(N.autoeqIn);
+      N.autoeqIn.connect(N.autoeqOut);
+      N.autoeqOut.connect(N.eq[0]);
       for (let i = 0; i < EQ_BANDS.length - 1; i++) N.eq[i].connect(N.eq[i + 1]);
       N.eq[EQ_BANDS.length - 1].connect(N.bass);
       N.bass.connect(N.treble);
@@ -1113,17 +1374,17 @@
         const i = Number(key.slice(2));
         if (N.eq[i]) {
           s.node = N.eq[i];
-          s.prev = (i === 0) ? N.lp : N.eq[i - 1];
+          s.prev = (i === 0) ? aeqLast : N.eq[i - 1];
           s.next = (i === N.eq.length - 1) ? N.bass : N.eq[i + 1];
         }
         return s;
       }
       switch (key) {
         case 'input':    s.node = N.input;    s.multi = true;  s.next = N.volume;   break;
-        case 'volume':   s.node = N.volume;   s.prev = N.input;  s.next = N.autoeqIn; break;
-        case 'autoeqIn': s.node = N.autoeqIn; s.prev = N.volume; s.next = aeqFirst; break;
-        case 'hp':       s.node = N.hp;       s.prev = aeqLast;  s.next = N.lp;       break;
-        case 'lp':       s.node = N.lp;       s.prev = N.hp;     s.next = N.eq[0];    break;
+        case 'volume':   s.node = N.volume;   s.prev = N.input;  s.next = N.hp; break;
+        case 'hp':       s.node = N.hp;       s.prev = N.volume; s.next = N.lp; break;
+        case 'lp':       s.node = N.lp;       s.prev = N.hp;     s.next = N.noiseReduction.input; break;
+        case 'autoeqIn': s.node = N.autoeqIn; s.prev = N.adaptiveNoiseReduction.output; s.next = aeqFirst; break;
         case 'bass':     s.node = N.bass;     s.prev = N.eq[N.eq.length - 1]; s.next = N.treble; break;
         case 'treble':   s.node = N.treble;   s.prev = N.bass;   s.next = N.dfxFidelity; break;
         case 'dfxFidelity': s.node = N.dfxFidelity; s.prev = N.treble; s.next = N.dfxPresence; break;
@@ -1306,6 +1567,7 @@
       this.setP('volume', N.volume.gain, s.volumeBoost / 100, function () { return mkGain(s.volumeBoost / 100); });
       this.setP('hp', N.hp.frequency, hpFreq, function () { return mkBiquad('highpass', hpFreq, 1, 0); });
       this.setP('lp', N.lp.frequency, lpFreq, function () { return mkBiquad('lowpass', lpFreq, 1, 0); });
+      this.applyNoiseProcessors(s);
       for (let i = 0; i < EQ_BANDS.length; i++) {
         const idx = i;
         this.setP('eq' + idx, N.eq[idx].gain, s.equalizer[idx], function () {
@@ -2002,6 +2264,7 @@
 
 .uae-modal { position: fixed; left: 24px; top: 90px; width: 420px; max-width: calc(100vw - 28px); max-height: calc(100vh - 50px); display: none; flex-direction: column; background: #14141a; border: 1px solid #2e2e3a; border-radius: 10px; box-shadow: 0 6px 30px rgba(0,0,0,.7); z-index: 2147483648; }
 .uae-modal-equalizer { width: 620px; }
+.uae-modal-filters { width: 560px; }
 .uae-modal.open { display: flex; }
 .uae-modal-head { display: flex; align-items: center; padding: 9px 12px; border-bottom: 1px solid #2e2e3a; background: #1a1a22; border-radius: 10px 10px 0 0; cursor: move; }
 .uae-modal-head .uae-title { flex: 1; font-size: 16px; font-weight: 600; }
@@ -2053,6 +2316,7 @@
 .uae-effect-item { border: 1px solid #232330; border-radius: 6px; background: #171720; }
 .uae-effect-item.active { border-color: #2d5f7a; background: #17222b; }
 .uae-effect-line { display: grid; grid-template-columns: 22px 42px 1fr 34px 54px; gap: 7px; align-items: center; padding: 7px 8px; }
+.uae-filter-line { display: grid; grid-template-columns: 42px 1fr 34px 54px; gap: 7px; align-items: center; padding: 7px 8px; }
 .uae-drag { color: #6b7280; cursor: grab; text-align: center; user-select: none; font-size: 16px; }
 .uae-drag:active { cursor: grabbing; }
 .uae-effect-name { font-size: 14px; color: #dfe2ea; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2379,7 +2643,7 @@
     },
 
     defaultModalPosition: function (name) {
-      const widths = { equalizer: 620, autoeq: 420, limiter: 420, filters: 420, effects: 560, blockedSites: 420 };
+      const widths = { equalizer: 620, autoeq: 420, limiter: 420, filters: 560, effects: 560, blockedSites: 420 };
       const w = widths[name] || 420;
       const offset = Object.keys(this.modalEls).indexOf(name);
       return {
@@ -2598,35 +2862,112 @@
     buildFiltersModal: function () {
       const m = this.modalEls.filters;
       const body = m.body;
-      const hpf = this.toggleRow('High-Pass Filter', settings.highPass, (v) => {
-        settings.highPass = v;
-        markCustom(); applyAll(); persistSettings();
-        UI.syncUI();
-      });
-      const hpfFreq = this.sliderRow('HPF Frequency', {
-        min: 20, max: 500, step: 5, value: settings.highPassFreq, fmt: 'hz',
-        disabled: !settings.highPass,
-        oninput: (v) => { settings.highPassFreq = v; markCustom(); applyAll(); persistSettings(); }
-      });
-      const lpf = this.toggleRow('Low-Pass Filter', settings.lowPass, (v) => {
-        settings.lowPass = v;
-        markCustom(); applyAll(); persistSettings();
-        UI.syncUI();
-      });
-      const lpfFreq = this.sliderRow('LPF Frequency', {
-        min: 1000, max: 20000, step: 100, value: settings.lowPassFreq, fmt: 'khz',
-        disabled: !settings.lowPass,
-        oninput: (v) => { settings.lowPassFreq = v; markCustom(); applyAll(); persistSettings(); }
-      });
-      this.controls.hpf = hpf;
-      this.controls.hpfFreq = hpfFreq;
-      this.controls.lpf = lpf;
-      this.controls.lpfFreq = lpfFreq;
-      body.appendChild(hpf.row);
-      body.appendChild(hpfFreq.row);
-      body.appendChild(lpf.row);
-      body.appendChild(lpfFreq.row);
-      body.appendChild(this.h('div', { class: 'uae-hint', text: 'HPF removes low-frequency rumble (20\u2013500 Hz). LPF rolls off highs (1\u201320 kHz) for a warmer sound.' }));
+      const list = this.h('div', { class: 'uae-filter-list uae-effect-list' });
+      this.els.filterList = list;
+      body.appendChild(list);
+      body.appendChild(this.h('div', { class: 'uae-hint', text: 'HPF removes low-frequency rumble, LPF rolls off highs. Noise filters are native bypass stages to keep switching stable.' }));
+      this.renderFiltersList();
+    },
+
+    renderFiltersList: function () {
+      const list = this.els.filterList;
+      if (!list) return;
+      list.textContent = '';
+      const defs = [
+        { enabledKey: 'highPass', freqKey: 'highPassFreq', label: 'High-Pass Filter', freqLabel: 'HPF Frequency', min: 20, max: 500, step: 5, fmt: 'hz' },
+        { enabledKey: 'lowPass', freqKey: 'lowPassFreq', label: 'Low-Pass Filter', freqLabel: 'LPF Frequency', min: 1000, max: 20000, step: 100, fmt: 'khz' },
+        {
+          enabledKey: 'noiseReduction',
+          label: 'Noise Reduction',
+          params: [
+            { key: 'noiseReductionAmount', label: 'Strength', min: 0, max: 100, step: 1, fmt: 'pct' },
+            { key: 'noiseReductionThreshold', label: 'Noise Floor', min: -80, max: -20, step: 1, fmt: 'db' },
+            { key: 'noiseReductionSmoothing', label: 'Smoothing', min: 0, max: 100, step: 1, fmt: 'pct' },
+            { key: 'noiseReductionArtifactProtection', label: 'Artifact Protection', min: 0, max: 100, step: 1, fmt: 'pct' },
+            { key: 'noiseReductionPreserveTransients', label: 'Preserve Transients', type: 'toggle' }
+          ]
+        },
+        {
+          enabledKey: 'adaptiveNoiseReduction',
+          label: 'Adaptive Noise Reduction',
+          params: [
+            { key: 'adaptiveNoiseReductionAmount', label: 'Strength', min: 0, max: 100, step: 1, fmt: 'pct' },
+            { key: 'adaptiveNoiseReductionFocus', label: 'Noise Focus', min: 0, max: 100, step: 1, fmt: 'pct' }
+          ]
+        }
+      ];
+      for (let i = 0; i < defs.length; i++) {
+        const def = defs[i];
+        const active = !!settings[def.enabledKey];
+        const stage = Engine.nodes && Engine.nodes[def.enabledKey];
+        const suffix = stage && stage.loading ? ' (Loading...)' : (stage && stage.failed ? ' (Unavailable)' : '');
+        const item = this.h('div', { class: 'uae-effect-item' + (active ? ' active' : '') });
+        const sw = this.h('input', { type: 'checkbox', class: 'uae-switch' });
+        sw.checked = active;
+        sw.addEventListener('change', () => {
+          settings[def.enabledKey] = sw.checked;
+          markCustom();
+          applyAll();
+          persistSettings();
+          this.renderFiltersList();
+        });
+        const name = this.h('span', { class: 'uae-effect-name', text: def.label + suffix });
+        const cfg = this.btn('\u2699', 'Configure ' + def.label);
+        cfg.className += ' uae-icon-btn';
+        const reset = this.btn('Reset', 'Reset only ' + def.label);
+        const conf = this.h('div', { class: 'uae-effect-config' });
+        cfg.addEventListener('click', () => conf.classList.toggle('open'));
+        reset.addEventListener('click', () => {
+          const d = defaultSettings();
+          settings[def.enabledKey] = d[def.enabledKey];
+          const params = def.params || [{ key: def.freqKey }];
+          for (let j = 0; j < params.length; j++) settings[params[j].key] = d[params[j].key];
+          markCustom();
+          applyAll();
+          persistSettings();
+          this.renderFiltersList();
+        });
+        item.appendChild(this.h('div', { class: 'uae-filter-line' }, [sw, name, cfg, reset]));
+        this.fillFilterConfig(def, conf);
+        item.appendChild(conf);
+        list.appendChild(item);
+      }
+    },
+
+    fillFilterConfig: function (def, container) {
+      const params = def.params || [{ key: def.freqKey, label: def.freqLabel, min: def.min, max: def.max, step: def.step, fmt: def.fmt }];
+      for (let i = 0; i < params.length; i++) {
+        const p = params[i];
+        if (p.type === 'toggle') {
+          const ctrl = this.toggleRow(p.label, settings[p.key], (v) => {
+            settings[p.key] = v;
+            markCustom();
+            applyAll();
+            persistSettings();
+          });
+          ctrl.input.disabled = !settings[def.enabledKey];
+          container.appendChild(ctrl.row);
+          continue;
+        }
+        const ctrl = this.sliderRow(p.label, {
+          min: p.min, max: p.max, step: p.step, value: settings[p.key], fmt: p.fmt,
+          disabled: !settings[def.enabledKey],
+          oninput: (v) => {
+            settings[p.key] = v;
+            markCustom();
+            applyAll();
+            persistSettings();
+          }
+        });
+        if (def.enabledKey === 'highPass') {
+          this.controls.hpf = { set: function () {} };
+          this.controls.hpfFreq = ctrl;
+        } else if (def.enabledKey === 'lowPass') {
+          this.controls.lpf = { set: function () {} };
+          this.controls.lpfFreq = ctrl;
+        }
+        container.appendChild(ctrl.row);
+      }
     },
 
     buildBlockedSitesModal: function () {
@@ -2941,8 +3282,9 @@
       if (c.limiterCeiling) c.limiterCeiling.set(settings.limiterCeiling);
       if (c.limiterLookahead) c.limiterLookahead.set(settings.limiterLookahead);
       if (c.eq) this.syncEq();
-      if (c.hpf) { c.hpf.set(settings.highPass); c.hpfFreq.disable(!settings.highPass); c.hpfFreq.set(settings.highPassFreq); }
-      if (c.lpf) { c.lpf.set(settings.lowPass); c.lpfFreq.disable(!settings.lowPass); c.lpfFreq.set(settings.lowPassFreq); }
+      if (c.hpf && c.hpfFreq) { c.hpf.set(settings.highPass); c.hpfFreq.disable(!settings.highPass); c.hpfFreq.set(settings.highPassFreq); }
+      if (c.lpf && c.lpfFreq) { c.lpf.set(settings.lowPass); c.lpfFreq.disable(!settings.lowPass); c.lpfFreq.set(settings.lowPassFreq); }
+      if (this.els.filterList) this.renderFiltersList();
       if (c.effectPreset) {
         this.renderEffectPresetOptions();
         c.effectPreset.set(settings.effects.preset || 'Custom');
