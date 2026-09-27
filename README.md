@@ -54,7 +54,7 @@ Boost bass and treble, tune a 10-band equalizer, apply AutoEq headphone profiles
 
 <ul>
 <li><b>Real-time Web Audio processing</b> for HTML5 video and audio elements</li>
-<li><b>Volume Boost</b> from 25% to 300%</li>
+<li><b>Volume Boost</b> from 0% to 300% (0db to +12db)</li>
 <li><b>Bass Boost</b> with low-shelf processing</li>
 <li><b>Treble Boost</b> with high-shelf processing</li>
 <li><b>10-band Equalizer</b> from 31 Hz to 16 kHz</li>
