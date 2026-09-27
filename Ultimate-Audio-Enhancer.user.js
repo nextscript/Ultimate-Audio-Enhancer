@@ -3,7 +3,7 @@
 // @name:de      Ultimate Audio Enhancer (Echtzeit-Audio-Verbesserung)
 // @namespace    https://github.com/nextscript
 // @author       Freak288
-// @version      1.0.7
+// @version      1.0.8
 // @description  Real-time audio enhancement for HTML5 video and audio
 // @description:de Echtzeit-Audio-Verbesserung für HTML5-Video und Audio
 // @match        *://*/*
@@ -25,7 +25,7 @@
   // ============================================================================
   // 1. Configuration
   // ============================================================================
-  const VERSION = '1.0.7';
+  const VERSION = '1.0.8';
   const AUTOEQ_BASE = 'https://raw.githubusercontent.com/nextscript/AutoEq/master/results/';
   const AUTOEQ_INDEX_URL = AUTOEQ_BASE + 'INDEX.md';
   const EXPORT_FILENAME = 'ultimate-audio-enhancer-config.json';
@@ -439,7 +439,7 @@
     out.equalizer = sanitizeEq(s.equalizer, d.equalizer);
     out.bassBoost = clampNum(s.bassBoost, 0, 100); if (out.bassBoost === null) out.bassBoost = d.bassBoost;
     out.trebleBoost = clampNum(s.trebleBoost, 0, 100); if (out.trebleBoost === null) out.trebleBoost = d.trebleBoost;
-    out.volumeBoost = clampNum(s.volumeBoost, 25, 300); if (out.volumeBoost === null) out.volumeBoost = d.volumeBoost;
+    out.volumeBoost = clampNum(s.volumeBoost, 100, 400); if (out.volumeBoost === null) out.volumeBoost = d.volumeBoost;
     out.dfxPreset = typeof s.dfxPreset === 'string' && (s.dfxPreset === 'Custom' || DFX_PRESETS[s.dfxPreset]) ? s.dfxPreset : d.dfxPreset;
     out.dfxFidelity = clampNum(s.dfxFidelity, 0, 10); if (out.dfxFidelity === null) out.dfxFidelity = d.dfxFidelity;
     out.dfxAmbience = clampNum(s.dfxAmbience, 0, 10); if (out.dfxAmbience === null) out.dfxAmbience = d.dfxAmbience;
@@ -817,6 +817,11 @@
       N.siteBypass = ctx.createGain();
       N.processedIn.gain.value = 1;
       N.siteBypass.gain.value = 1;
+      // Player volume: the browser applies el.volume before the source node, which the
+      // compressor/limiter would partly undo. playerComp cancels it at the input so the
+      // chain processes full level; playerVol re-applies it as the final fader.
+      N.playerComp = ctx.createGain();
+      N.playerVol = ctx.createGain();
       N.volume = ctx.createGain();
       N.autoeqIn = ctx.createGain();
       this.autoeqFilters = [];
@@ -889,7 +894,8 @@
       // Wiring
       N.input.connect(N.processedIn);
       N.input.connect(N.siteBypass);
-      N.processedIn.connect(N.volume);
+      N.processedIn.connect(N.playerComp);
+      N.playerComp.connect(N.volume);
       N.volume.connect(N.hp);
       N.hp.connect(N.lp);
       N.lp.connect(N.noiseReduction.input);
@@ -941,7 +947,8 @@
       N.limDelay.connect(N.lim);
       N.lim.connect(N.limCeiling);
       N.limCeiling.connect(N.out);
-      N.out.connect(N.anMain);
+      N.out.connect(N.playerVol);
+      N.playerVol.connect(N.anMain);
       N.anMain.connect(ctx.destination);
       N.siteBypassConnected = false;
       N.processedOutputConnected = true;
@@ -1427,7 +1434,7 @@
       }
       switch (key) {
         case 'input':    s.node = N.input;    s.multi = true;  s.next = N.volume;   break;
-        case 'volume':   s.node = N.volume;   s.prev = N.input;  s.next = N.hp; break;
+        case 'volume':   s.node = N.volume;   s.prev = N.playerComp; s.next = N.hp; break;
         case 'hp':       s.node = N.hp;       s.prev = N.volume; s.next = N.lp; break;
         case 'lp':       s.node = N.lp;       s.prev = N.hp;     s.next = N.noiseReduction.input; break;
         case 'autoeqIn': s.node = N.autoeqIn; s.prev = N.adaptiveNoiseReduction.output; s.next = aeqFirst; break;
@@ -1447,7 +1454,8 @@
         case 'limDelay': s.node = N.limDelay; s.prev = N.limIn;  s.next = N.lim;      break;
         case 'lim':      s.node = N.lim;      s.prev = N.limDelay; s.next = N.limCeiling; break;
         case 'limCeiling': s.node = N.limCeiling; s.prev = N.lim; s.next = N.out;     break;
-        case 'out':      s.node = N.out;      s.prev = N.limCeiling; s.next = N.anMain; break;
+        case 'out':      s.node = N.out;      s.prev = N.limCeiling; s.next = N.playerVol; break;
+        case 'playerVol': s.node = N.playerVol; s.prev = N.out;   s.next = N.anMain;   break;
       }
       return s;
     },
@@ -1477,6 +1485,32 @@
       s.node = fresh;
       this.nodes[key] = fresh;
       if (key.indexOf('eq') === 0 && key.length > 2) this.nodes.eq[Number(key.slice(2))] = fresh;
+    },
+
+    // Player volume of the routed media (max over playing elements, else over all).
+    applyPlayerVolume() {
+      const N = this.nodes;
+      const ctx = this.ctx;
+      if (!ctx || !N || !N.playerComp) return;
+      let playing = -1, any = -1;
+      for (let i = 0; i < routedMedia.length; i++) {
+        const el = routedMedia[i];
+        const v = el.muted ? 0 : (typeof el.volume === 'number' ? el.volume : 1);
+        if (v > any) any = v;
+        if (!el.paused && !el.ended && v > playing) playing = v;
+      }
+      const m = playing >= 0 ? playing : (any >= 0 ? any : 1);
+      // The browser changes the source level instantly, so the compensation must too.
+      const t = ctx.currentTime;
+      try {
+        N.playerComp.gain.cancelScheduledValues(t);
+        N.playerComp.gain.setValueAtTime(m > 0.0001 ? 1 / m : 1, t);
+      } catch (_) {}
+      this.setP('playerVol', N.playerVol.gain, m, function () {
+        const g = ctx.createGain();
+        g.gain.value = m;
+        return g;
+      });
     },
 
     setP(key, param, value, makeFresh) {
@@ -1764,6 +1798,10 @@
     try { source.connect(Engine.nodes.input); } catch (_) {}
     sources.set(el, { source: source });
     routedMedia.push(el);
+    ['volumechange', 'play', 'pause', 'ended'].forEach(function (type) {
+      el.addEventListener(type, function () { Engine.applyPlayerVolume(); });
+    });
+    Engine.applyPlayerVolume();
     if (Engine.nodes) Engine.applyPitchPlayback(settings.effects.effects.pitch);
     // resume the context on playback (autoplay elements may lack a page gesture)
     el.addEventListener('playing', function () {
@@ -2392,6 +2430,9 @@
 .uae-section { padding: 8px 0; border-bottom: 1px solid #232330; }
 .uae-section:last-child { border-bottom: none; }
 .uae-section-title { font-size: 13px; font-weight: 600; color: #8b93a7; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 7px; }
+.uae-section-title-row { display: flex; align-items: center; justify-content: space-between; }
+.uae-unit-toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; text-transform: none; }
+.uae-unit-lbl { min-width: 18px; text-align: right; font-size: 12px; }
 
 .uae-enable-row { display: flex; align-items: center; justify-content: space-between; }
 .uae-enable-row label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 600; }
@@ -2401,6 +2442,9 @@
 .uae-switch:checked { background: #4ade80; }
 .uae-switch:after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: left .15s; }
 .uae-switch:checked:after { left: 18px; }
+.uae-switch.uae-switch-sm { width: 28px; height: 16px; border-radius: 8px; }
+.uae-switch.uae-switch-sm:after { width: 12px; height: 12px; }
+.uae-switch.uae-switch-sm:checked:after { left: 14px; }
 
 .uae-row { display: flex; flex-direction: column; gap: 3px; margin: 7px 0; }
 .uae-row-top { display: flex; justify-content: space-between; align-items: baseline; }
@@ -2680,13 +2724,20 @@
       ]);
       body.appendChild(enable);
 
-      // Quick gain rows
+      // Quick gain rows (display unit toggles between % and dB; stored values stay %).
+      // pctOffset: volumeBoost is stored as gain % (100 = unity) but shown as pure boost (0% = normal).
+      const gainFmt = (toDb, pctOffset) => (v) => {
+        if (!uiState.gainUnitDb) return Math.round(v - (pctOffset || 0)) + '%';
+        const d = Math.round(toDb(v) * 10) / 10;
+        return (d > 0 ? '+' : '') + d.toFixed(1) + ' dB';
+      };
       const volume = this.sliderRow('Volume Boost', {
-        min: 25, max: 300, step: 5, value: settings.volumeBoost, fmt: 'pct',
+        min: 100, max: 400, step: 5, value: settings.volumeBoost,
+        fmt: gainFmt((v) => 20 * Math.log10(v / 100), 100),
         oninput: (v) => { settings.volumeBoost = v; markCustom(); applyAll(); persistSettings(); }
       });
       const bass = this.sliderRow('Bass Boost', {
-        min: 0, max: 100, step: 5, value: settings.bassBoost, fmt: 'pct',
+        min: 0, max: 100, step: 5, value: settings.bassBoost, fmt: gainFmt((v) => (v / 100) * 15),
         oninput: (v) => {
           settings.bassBoost = v;
           if (v > 0) settings._lastBass = v;
@@ -2694,7 +2745,7 @@
         }
       });
       const treble = this.sliderRow('Treble Boost', {
-        min: 0, max: 100, step: 5, value: settings.trebleBoost, fmt: 'pct',
+        min: 0, max: 100, step: 5, value: settings.trebleBoost, fmt: gainFmt((v) => (v / 100) * 15),
         oninput: (v) => {
           settings.trebleBoost = v;
           if (v > 0) settings._lastTreble = v;
@@ -2704,8 +2755,20 @@
       this.controls.volume = volume;
       this.controls.bass = bass;
       this.controls.treble = treble;
+      const unitSw = this.h('input', { type: 'checkbox', class: 'uae-switch uae-switch-sm', title: 'Show values in dB instead of %' });
+      unitSw.checked = !!uiState.gainUnitDb;
+      const unitLbl = this.h('span', { class: 'uae-unit-lbl', text: unitSw.checked ? 'dB' : '%' });
+      unitSw.addEventListener('change', () => {
+        uiState.gainUnitDb = unitSw.checked;
+        unitLbl.textContent = unitSw.checked ? 'dB' : '%';
+        persistUI();
+        [volume, bass, treble].forEach((c) => c.set(parseFloat(c.input.value)));
+      });
       const gains = this.h('div', { class: 'uae-section' }, [
-        this.h('div', { class: 'uae-section-title' }, 'Gain & Boost'),
+        this.h('div', { class: 'uae-section-title uae-section-title-row' }, [
+          this.h('span', { text: 'Gain & Boost' }),
+          this.h('label', { class: 'uae-unit-toggle' }, [unitLbl, unitSw])
+        ]),
         volume.row,
         bass.row,
         treble.row
