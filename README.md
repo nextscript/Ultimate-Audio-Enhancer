@@ -54,7 +54,7 @@ Boost bass and treble, tune a 10-band equalizer, apply AutoEq headphone profiles
 
 <ul>
 <li><b>Real-time Web Audio processing</b> for HTML5 video and audio elements</li>
-<li><b>Volume Boost</b> from 0% to 300% (0db to +12db)</li>
+<li><b>Volume Boost</b> from 0% to 300%</li>
 <li><b>Bass Boost</b> with low-shelf processing</li>
 <li><b>Treble Boost</b> with high-shelf processing</li>
 <li><b>10-band Equalizer</b> from 31 Hz to 16 kHz</li>
@@ -220,7 +220,7 @@ The built-in limiter helps control excessive output levels when using high boost
 <h2>Keyboard Shortcuts</h2>
 <hr>
 
-<b>All main shortcuts use CTRL + SHIFT + key.</b>
+<b>All main shortcuts use CTRL + SHIFT + key</b> (on macOS, CMD + SHIFT + key works too).
 
 <table>
   <thead>
@@ -331,7 +331,7 @@ If userscripts do not run correctly, make sure userscript execution is enabled f
 <hr>
 
 <ul>
-<li>Userscript version: <b>1.0.8</b></li>
+<li>Userscript version: <b>1.0.1</b></li>
 <li>Audio engine: <b>Web Audio API / AudioContext</b></li>
 <li>Equalizer: <b>10 × BiquadFilterNode</b></li>
 <li>Effects: <b>DelayNode, ConvolverNode, WaveShaperNode, BiquadFilterNode, ChannelSplitterNode, ChannelMergerNode, and DynamicsCompressorNode</b></li>
