@@ -3,7 +3,7 @@
 // @name:de      Ultimate Audio Enhancer (Echtzeit-Audio-Verbesserung)
 // @namespace    https://github.com/nextscript
 // @author       Freak288
-// @version      1.0.8
+// @version      1.0.9
 // @description  Real-time audio enhancement for HTML5 video and audio
 // @description:de Echtzeit-Audio-Verbesserung für HTML5-Video und Audio
 // @match        *://*/*
@@ -25,7 +25,7 @@
   // ============================================================================
   // 1. Configuration
   // ============================================================================
-  const VERSION = '1.0.8';
+  const VERSION = '1.0.9';
   const AUTOEQ_BASE = 'https://raw.githubusercontent.com/nextscript/AutoEq/master/results/';
   const AUTOEQ_INDEX_URL = AUTOEQ_BASE + 'INDEX.md';
   const EXPORT_FILENAME = 'ultimate-audio-enhancer-config.json';
@@ -3837,13 +3837,24 @@
           if (UI.activeModal) { e.preventDefault(); UI.closeModal(); }
           return;
         }
+      });
+      // Capture phase on window so site handlers (stopPropagation) can't swallow the combo.
+      window.addEventListener('keydown', (e) => {
+        if (e.isComposing) return;
         const t = e.target;
         if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
-        if (!(e.ctrlKey && e.shiftKey) || e.altKey || e.metaKey) return;
-        const k = (e.key || '').toLowerCase();
+        // Ctrl+Shift everywhere; Cmd+Shift also accepted (macOS). Exactly one of Ctrl/Cmd.
+        if (!e.shiftKey || e.altKey || e.ctrlKey === e.metaKey) return;
+        // Prefer the layout letter (AZERTY/QWERTZ-correct); fall back to the physical key
+        // when e.key isn't a plain Latin letter (non-Latin layouts, dead keys, some Linux/macOS setups).
+        let k = (e.key || '').toLowerCase();
+        if (!/^[a-z]$/.test(k)) {
+          const m = /^Key([A-Z])$/.exec(e.code || '');
+          k = m ? m[1].toLowerCase() : '';
+        }
         let handled = true;
         if (isCurrentSiteBlocked() && k !== 'a') {
-          e.preventDefault();
+          if ('eqfsbtlxr'.indexOf(k) !== -1 && k) e.preventDefault();
           return;
         }
         switch (k) {
@@ -3859,8 +3870,8 @@
           case 'r': resetSettings(); UI.syncUI(); break;
           default: handled = false;
         }
-        if (handled) e.preventDefault();
-      });
+        if (handled) { e.preventDefault(); e.stopPropagation(); }
+      }, true);
     },
 
     // ---------- export / import ----------
